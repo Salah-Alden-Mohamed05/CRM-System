@@ -56,7 +56,7 @@ export default function ReportsPage() {
 
   return (
     <MainLayout>
-      <div className="p-6 space-y-6">
+      <div className="space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
@@ -104,7 +104,7 @@ export default function ReportsPage() {
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
               <XAxis dataKey="label" tick={{ fontSize: 11 }} />
               <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} />
-              <Tooltip formatter={(v: number) => fmt(v)} />
+              <Tooltip formatter={(v) => fmt(Number(v ?? 0))} />
               <Legend />
               <Area type="monotone" dataKey="invoiced" name="Invoiced" stroke={COLORS[0]} fill={`url(#invoiced)`} strokeWidth={2} />
               <Area type="monotone" dataKey="collected" name="Collected" stroke={COLORS[1]} fill={`url(#collected)`} strokeWidth={2} />

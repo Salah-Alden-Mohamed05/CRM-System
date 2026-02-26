@@ -18,6 +18,7 @@ const navItems = [
   { href: '/tickets', label: 'Support', icon: HeadphonesIcon },
   { href: '/finance', label: 'Finance', icon: DollarSign },
   { href: '/reports', label: 'Reports', icon: BarChart2 },
+  { href: '/settings', label: 'Settings', icon: Settings },
 ];
 
 export default function MainLayout({ children }: { children: React.ReactNode }) {
@@ -146,7 +147,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
         </header>
 
         {/* Page Content */}
-        <main className="flex-1 overflow-y-auto">
+        <main className="flex-1 overflow-y-auto p-6">
           {children}
         </main>
       </div>

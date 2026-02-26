@@ -8,6 +8,7 @@ interface BadgeProps {
   children: React.ReactNode;
   variant?: 'default' | 'success' | 'warning' | 'danger' | 'info' | 'purple';
   size?: 'sm' | 'md';
+  className?: string;
 }
 
 const badgeVariants: Record<string, string> = {
@@ -19,10 +20,10 @@ const badgeVariants: Record<string, string> = {
   purple: 'bg-purple-100 text-purple-700',
 };
 
-export const Badge = ({ children, variant = 'default', size = 'sm' }: BadgeProps) => (
+export const Badge = ({ children, variant = 'default', size = 'sm', className }: BadgeProps) => (
   <span className={`inline-flex items-center font-medium rounded-full ${
     size === 'sm' ? 'px-2 py-0.5 text-xs' : 'px-3 py-1 text-sm'
-  } ${badgeVariants[variant]}`}>
+  } ${className || badgeVariants[variant]}`}>
     {children}
   </span>
 );
@@ -69,10 +70,14 @@ interface CardProps {
   children: React.ReactNode;
   className?: string;
   padding?: boolean;
+  onClick?: () => void;
 }
 
-export const Card = ({ children, className = '', padding = true }: CardProps) => (
-  <div className={`bg-white rounded-xl border border-gray-200 shadow-sm ${padding ? 'p-6' : ''} ${className}`}>
+export const Card = ({ children, className = '', padding = false, onClick }: CardProps) => (
+  <div
+    className={`bg-white rounded-xl border border-gray-200 shadow-sm ${padding ? 'p-6' : ''} ${className} ${onClick ? 'cursor-pointer' : ''}`}
+    onClick={onClick}
+  >
     {children}
   </div>
 );
