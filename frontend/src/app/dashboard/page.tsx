@@ -70,7 +70,7 @@ export default function DashboardPage() {
 
   return (
     <MainLayout>
-      <div className="p-6 space-y-6">
+      <div className="space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
@@ -142,7 +142,7 @@ export default function DashboardPage() {
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                 <XAxis dataKey="label" tick={{ fontSize: 11 }} />
                 <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `$${(v/1000).toFixed(0)}k`} />
-                <Tooltip formatter={(v: number) => formatCurrency(v)} />
+                <Tooltip formatter={(v) => formatCurrency(Number(v ?? 0))} />
                 <Legend />
                 <Area type="monotone" dataKey="invoiced" name="Invoiced" stroke="#3b82f6" fill="url(#invoiced)" strokeWidth={2} />
                 <Area type="monotone" dataKey="collected" name="Collected" stroke="#10b981" fill="url(#collected)" strokeWidth={2} />
@@ -170,7 +170,7 @@ export default function DashboardPage() {
                       <Cell key={idx} fill={STATUS_COLORS[entry.status] || '#94a3b8'} />
                     ))}
                   </Pie>
-                  <Tooltip formatter={(v: number) => v} />
+                  <Tooltip formatter={(v) => v as number} />
                 </PieChart>
               </ResponsiveContainer>
               <div className="flex flex-col justify-center gap-1.5">
@@ -196,7 +196,7 @@ export default function DashboardPage() {
                 <CartesianGrid strokeDasharray="3 3" horizontal={false} />
                 <XAxis type="number" tick={{ fontSize: 10 }} />
                 <YAxis dataKey="stage" type="category" tick={{ fontSize: 11 }} width={70} />
-                <Tooltip formatter={(v: number) => [v, 'Deals']} />
+                <Tooltip formatter={(v) => [v as number, 'Deals']} />
                 <Bar dataKey="count" fill="#3b82f6" radius={[0, 4, 4, 0]} />
               </BarChart>
             </ResponsiveContainer>
