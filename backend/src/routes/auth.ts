@@ -1,34 +1,51 @@
 import { Router } from 'express';
-import { body } from 'express-validator';
-import { register, login, getMe, getUsers, updateUser, getRoles } from '../controllers/authController';
-import { authenticate, authorize } from '../middleware/auth';
-import { validate } from '../middleware/validators';
+import {
+  register,
+  login,
+  refreshToken,
+  logout,
+  getMe,
+  getUsers,
+  createUser,
+  updateUser,
+  deleteUser,
+  unlockUser,
+  adminResetPassword,
+  getRoles,
+  getLoginAuditLogs,
+  getActivityLogs,
+  forgotPassword,
+  resetPassword,
+  updatePreferences,
+} from '../controllers/authController';
+import { authenticate, requireRole } from '../middleware/auth';
 
 const router = Router();
 
-router.post('/register',
-  [
-    body('email').isEmail().normalizeEmail(),
-    body('password').isLength({ min: 8 }),
-    body('firstName').notEmpty().trim(),
-    body('lastName').notEmpty().trim(),
-  ],
-  validate,
-  register
-);
+// ── Public Routes ─────────────────────────────────────────────
+router.post('/register', register);
+router.post('/login', login);
+router.post('/refresh-token', refreshToken);
+router.post('/forgot-password', forgotPassword);
+router.post('/reset-password', resetPassword);
 
-router.post('/login',
-  [
-    body('email').isEmail().normalizeEmail(),
-    body('password').notEmpty(),
-  ],
-  validate,
-  login
-);
+// ── Protected: Any Authenticated User ────────────────────────
+router.use(authenticate);
+router.post('/logout', logout);
+router.get('/me', getMe);
+router.patch('/preferences', updatePreferences);
+router.get('/roles', getRoles);
 
-router.get('/me', authenticate, getMe);
-router.get('/users', authenticate, authorize('Admin'), getUsers);
-router.put('/users/:id', authenticate, authorize('Admin'), updateUser);
-router.get('/roles', authenticate, getRoles);
+// ── Admin Only ────────────────────────────────────────────────
+router.get('/users', requireRole('Admin'), getUsers);
+router.post('/users', requireRole('Admin'), createUser);
+router.put('/users/:id', requireRole('Admin'), updateUser);
+router.delete('/users/:id', requireRole('Admin'), deleteUser);
+router.patch('/users/:id/unlock', requireRole('Admin'), unlockUser);
+router.patch('/users/:id/reset-password', requireRole('Admin'), adminResetPassword);
+
+// ── Audit Logs (Admin) ────────────────────────────────────────
+router.get('/audit/login', requireRole('Admin'), getLoginAuditLogs);
+router.get('/audit/activity', requireRole('Admin'), getActivityLogs);
 
 export default router;
