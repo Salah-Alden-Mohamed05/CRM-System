@@ -17,9 +17,33 @@ api.interceptors.request.use((config) => {
 
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
-    if (error.response?.status === 401 && typeof window !== 'undefined') {
+  async (error) => {
+    const originalRequest = error.config;
+    // Try refresh token on 401 (but not on login/refresh routes themselves)
+    if (
+      error.response?.status === 401 &&
+      typeof window !== 'undefined' &&
+      !originalRequest._retry &&
+      !originalRequest.url?.includes('/auth/login') &&
+      !originalRequest.url?.includes('/auth/refresh-token')
+    ) {
+      originalRequest._retry = true;
+      const refreshToken = localStorage.getItem('refreshToken');
+      if (refreshToken) {
+        try {
+          const resp = await axios.post(`${API_URL}/auth/refresh-token`, { refreshToken });
+          const newToken = resp.data?.data?.token;
+          if (newToken) {
+            localStorage.setItem('token', newToken);
+            originalRequest.headers.Authorization = `Bearer ${newToken}`;
+            return api(originalRequest);
+          }
+        } catch {
+          // refresh failed – fall through to logout
+        }
+      }
       localStorage.removeItem('token');
+      localStorage.removeItem('refreshToken');
       localStorage.removeItem('user');
       window.location.href = '/login';
     }
@@ -29,48 +53,98 @@ api.interceptors.response.use(
 
 export default api;
 
-// Auth
+// ── Auth ──────────────────────────────────────────────────────
 export const authAPI = {
-  login: (data: { email: string; password: string }) => api.post('/auth/login', data),
+  login: (data: { email: string; password: string; rememberMe?: boolean }) =>
+    api.post('/auth/login', data),
   register: (data: unknown) => api.post('/auth/register', data),
+  logout: (data?: { refreshToken?: string }) => api.post('/auth/logout', data || {}),
   me: () => api.get('/auth/me'),
-  getUsers: () => api.get('/auth/users'),
+  refreshToken: (token: string) => api.post('/auth/refresh-token', { refreshToken: token }),
+  forgotPassword: (email: string) => api.post('/auth/forgot-password', { email }),
+  resetPassword: (token: string, newPassword: string) =>
+    api.post('/auth/reset-password', { token, newPassword }),
+
+  // User Management (Admin only)
+  getUsers: (params?: {
+    search?: string;
+    role?: string;
+    status?: string;
+    page?: number;
+    limit?: number;
+  }) => api.get('/auth/users', { params }),
+  createUser: (data: unknown) => api.post('/auth/users', data),
+  updateUser: (id: string, data: unknown) => api.put(`/auth/users/${id}`, data),
+  deleteUser: (id: string) => api.delete(`/auth/users/${id}`),
+  unlockUser: (id: string) => api.patch(`/auth/users/${id}/unlock`),
+  adminResetPassword: (id: string, newPassword: string) =>
+    api.patch(`/auth/users/${id}/reset-password`, { newPassword }),
+
+  // Roles
   getRoles: () => api.get('/auth/roles'),
+
+  // Preferences
+  updatePreferences: (data: { language?: string; timezone?: string }) =>
+    api.patch('/auth/preferences', data),
+
+  // Audit logs (Admin only)
+  getLoginAuditLogs: (params?: {
+    userId?: string;
+    result?: string;
+    from?: string;
+    to?: string;
+    page?: number;
+    limit?: number;
+  }) => api.get('/auth/audit/login', { params }),
+
+  getActivityLogs: (params?: {
+    userId?: string;
+    action?: string;
+    from?: string;
+    to?: string;
+    page?: number;
+    limit?: number;
+  }) => api.get('/auth/audit/activity', { params }),
 };
 
-// Customers
+// ── Customers ────────────────────────────────────────────────
 export const customersAPI = {
   getAll: (params?: unknown) => api.get('/customers', { params }),
   getOne: (id: string) => api.get(`/customers/${id}`),
   create: (data: unknown) => api.post('/customers', data),
   update: (id: string, data: unknown) => api.put(`/customers/${id}`, data),
   delete: (id: string) => api.delete(`/customers/${id}`),
-  createContact: (customerId: string, data: unknown) => api.post(`/customers/${customerId}/contacts`, data),
+  createContact: (customerId: string, data: unknown) =>
+    api.post(`/customers/${customerId}/contacts`, data),
 };
 
-// Sales
+// ── Sales ────────────────────────────────────────────────────
 export const salesAPI = {
   getOpportunities: (params?: unknown) => api.get('/sales/opportunities', { params }),
   getOpportunity: (id: string) => api.get(`/sales/opportunities/${id}`),
   createOpportunity: (data: unknown) => api.post('/sales/opportunities', data),
-  updateOpportunity: (id: string, data: unknown) => api.put(`/sales/opportunities/${id}`, data),
-  updateStage: (id: string, data: unknown) => api.patch(`/sales/opportunities/${id}/stage`, data),
-  addActivity: (id: string, data: unknown) => api.post(`/sales/opportunities/${id}/activities`, data),
+  updateOpportunity: (id: string, data: unknown) =>
+    api.put(`/sales/opportunities/${id}`, data),
+  updateStage: (id: string, data: unknown) =>
+    api.patch(`/sales/opportunities/${id}/stage`, data),
+  addActivity: (id: string, data: unknown) =>
+    api.post(`/sales/opportunities/${id}/activities`, data),
   getLeads: () => api.get('/sales/leads'),
   createLead: (data: unknown) => api.post('/sales/leads', data),
 };
 
-// Shipments
+// ── Shipments ────────────────────────────────────────────────
 export const shipmentsAPI = {
   getAll: (params?: unknown) => api.get('/shipments', { params }),
   getOne: (id: string) => api.get(`/shipments/${id}`),
   create: (data: unknown) => api.post('/shipments', data),
-  updateStatus: (id: string, data: unknown) => api.patch(`/shipments/${id}/status`, data),
+  updateStatus: (id: string, data: unknown) =>
+    api.patch(`/shipments/${id}/status`, data),
   updateMilestone: (shipmentId: string, milestoneId: string, data: unknown) =>
     api.patch(`/shipments/${shipmentId}/milestones/${milestoneId}`, data),
 };
 
-// Tickets
+// ── Tickets ──────────────────────────────────────────────────
 export const ticketsAPI = {
   getAll: (params?: unknown) => api.get('/tickets', { params }),
   getOne: (id: string) => api.get(`/tickets/${id}`),
@@ -79,17 +153,19 @@ export const ticketsAPI = {
   addComment: (id: string, data: unknown) => api.post(`/tickets/${id}/comments`, data),
 };
 
-// Finance
+// ── Finance ──────────────────────────────────────────────────
 export const financeAPI = {
   getInvoices: (params?: unknown) => api.get('/finance/invoices', { params }),
   getInvoice: (id: string) => api.get(`/finance/invoices/${id}`),
   createInvoice: (data: unknown) => api.post('/finance/invoices', data),
   recordPayment: (data: unknown) => api.post('/finance/payments', data),
-  getCosts: (shipmentId: string) => api.get(`/finance/shipments/${shipmentId}/costs`),
-  addCost: (shipmentId: string, data: unknown) => api.post(`/finance/shipments/${shipmentId}/costs`, data),
+  getCosts: (shipmentId: string) =>
+    api.get(`/finance/shipments/${shipmentId}/costs`),
+  addCost: (shipmentId: string, data: unknown) =>
+    api.post(`/finance/shipments/${shipmentId}/costs`, data),
 };
 
-// AI
+// ── AI ───────────────────────────────────────────────────────
 export const aiAPI = {
   getInsights: () => api.get('/ai/insights'),
   predictDelay: (shipmentId: string) => api.get(`/ai/predict/shipment/${shipmentId}`),
@@ -98,7 +174,7 @@ export const aiAPI = {
   scoreDeal: (opportunityId: string) => api.get(`/ai/score/deal/${opportunityId}`),
 };
 
-// Dashboard
+// ── Dashboard ────────────────────────────────────────────────
 export const dashboardAPI = {
   getStats: () => api.get('/dashboard/stats'),
   getRevenueChart: (params?: unknown) => api.get('/dashboard/revenue-chart', { params }),

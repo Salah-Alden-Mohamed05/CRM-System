@@ -94,6 +94,26 @@ async function seed() {
       ON CONFLICT (ticket_number) DO NOTHING;
     `);
 
+    // Ensure email_lower is populated for existing users (idempotent)
+    await client.query(`
+      UPDATE users SET email_lower = LOWER(email) WHERE email_lower IS NULL OR email_lower = '';
+    `);
+
+    // Ensure user_preferences exist for all users
+    await client.query(`
+      INSERT INTO user_preferences (user_id, language, timezone)
+      SELECT id, 'en', 'UTC' FROM users
+      ON CONFLICT (user_id) DO NOTHING;
+    `);
+
+    // Unlock any users that may have been locked during testing
+    await client.query(`
+      UPDATE users
+      SET failed_login_attempts = 0, locked_until = NULL
+      WHERE email IN ('ops@logisticscrm.com')
+        AND (locked_until IS NOT NULL OR failed_login_attempts > 0);
+    `);
+
     console.log('✅ Database seeding completed successfully');
     console.log('\n📋 Demo Credentials:');
     console.log('  Admin:   admin@logisticscrm.com / Admin@1234');
