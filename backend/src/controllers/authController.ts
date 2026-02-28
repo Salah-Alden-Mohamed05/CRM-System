@@ -56,13 +56,54 @@ async function logActivity(
   } catch { /* non-blocking */ }
 }
 
-// ─── REGISTER ────────────────────────────────────────────────
-export const register = async (req: Request, res: Response): Promise<void> => {
+/** Returns true when at least one active Admin user exists */
+async function adminExists(): Promise<boolean> {
+  const r = await query(
+    `SELECT 1 FROM users u
+     JOIN roles r ON u.role_id = r.id
+     WHERE r.name = 'Admin' AND u.is_active = TRUE
+     LIMIT 1`
+  );
+  return r.rows.length > 0;
+}
+
+// ─── SETUP STATUS ─────────────────────────────────────────────
+/**
+ * GET /auth/setup-status
+ * Public – returns { needsSetup: true } when no Admin exists.
+ */
+export const setupStatus = async (_req: Request, res: Response): Promise<void> => {
   try {
-    const { email, password, firstName, lastName, roleId, phone } = req.body;
+    const has = await adminExists();
+    res.json({ needsSetup: !has });
+  } catch (error) {
+    console.error('SetupStatus error:', error);
+    res.status(500).json({ success: false, message: 'Failed to check setup status' });
+  }
+};
+
+// ─── SETUP ADMIN ──────────────────────────────────────────────
+/**
+ * POST /auth/setup-admin
+ * Public – creates the first Admin user ONLY when no Admin exists.
+ * Rejects with 403 if any Admin is already present.
+ */
+export const setupAdmin = async (req: Request, res: Response): Promise<void> => {
+  try {
+    // Guard: only callable when no Admin exists
+    const has = await adminExists();
+    if (has) {
+      res.status(403).json({
+        success: false,
+        message: 'Admin creation not allowed – an administrator account already exists.'
+      });
+      return;
+    }
+
+    const { email, password, firstName, lastName, phone } = req.body;
 
     if (!email || !password || !firstName || !lastName) {
-      res.status(400).json({ success: false, message: 'All fields are required' });
+      res.status(400).json({ success: false, message: 'Email, password, first name, and last name are required' });
       return;
     }
 
@@ -72,41 +113,58 @@ export const register = async (req: Request, res: Response): Promise<void> => {
     }
 
     const emailLower = email.toLowerCase().trim();
+
+    // Check duplicate
     const existing = await query('SELECT id FROM users WHERE email_lower = $1', [emailLower]);
     if (existing.rows.length > 0) {
       res.status(409).json({ success: false, message: 'Email already registered' });
       return;
     }
 
-    // Get default role if not provided
-    let resolvedRoleId = roleId;
-    if (!resolvedRoleId) {
-      const defaultRole = await query("SELECT id FROM roles WHERE name = 'Sales' LIMIT 1");
-      resolvedRoleId = defaultRole.rows[0]?.id;
+    // Get Admin role id
+    const roleResult = await query("SELECT id FROM roles WHERE name = 'Admin' LIMIT 1");
+    if (roleResult.rows.length === 0) {
+      res.status(500).json({ success: false, message: 'Admin role not found – run migrations first' });
+      return;
     }
+    const adminRoleId = roleResult.rows[0].id;
 
     const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
     const result = await query(
       `INSERT INTO users (email, password_hash, first_name, last_name, role_id, phone, password_changed_at)
        VALUES ($1, $2, $3, $4, $5, $6, NOW())
        RETURNING id, email, first_name, last_name, role_id, created_at`,
-      [emailLower, passwordHash, firstName.trim(), lastName.trim(), resolvedRoleId, phone]
+      [emailLower, passwordHash, firstName.trim(), lastName.trim(), adminRoleId, phone || null]
     );
 
     const user = result.rows[0];
 
-    // Create default preferences
+    // Default preferences
     await query(
       `INSERT INTO user_preferences (user_id, language) VALUES ($1, 'en') ON CONFLICT DO NOTHING`,
       [user.id]
     );
 
-    await logActivity(user.id, 'user_registered', 'user', user.id, req);
+    // Log the bootstrap event (entity_id = user.id, actor = user.id since no session yet)
+    await logActivity(user.id, 'SETUP_ADMIN', 'user', user.id, req, {
+      email: emailLower,
+      role: 'Admin',
+      note: 'First-admin bootstrap'
+    });
 
-    res.status(201).json({ success: true, message: 'User registered successfully', data: user });
+    res.status(201).json({
+      success: true,
+      message: 'Admin account created successfully. You can now log in.',
+      data: {
+        id: user.id,
+        email: user.email,
+        firstName: user.first_name,
+        lastName: user.last_name,
+      }
+    });
   } catch (error) {
-    console.error('Register error:', error);
-    res.status(500).json({ success: false, message: 'Registration failed' });
+    console.error('SetupAdmin error:', error);
+    res.status(500).json({ success: false, message: 'Failed to create admin account' });
   }
 };
 
@@ -526,6 +584,12 @@ export const getUsers = async (req: AuthRequest, res: Response): Promise<void> =
 };
 
 // ─── ADMIN: CREATE USER ──────────────────────────────────────
+/**
+ * Phase 9/10:
+ * - Only an authenticated Admin may call this route (enforced by requireRole('Admin') in router).
+ * - An Admin may create users with any role, including another Admin.
+ * - Non-Admin attempts to create Admin role are rejected with 403.
+ */
 export const createUser = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { email, password, firstName, lastName, roleId, phone } = req.body;
@@ -537,6 +601,25 @@ export const createUser = async (req: AuthRequest, res: Response): Promise<void>
 
     if (password.length < 8) {
       res.status(400).json({ success: false, message: 'Password must be at least 8 characters' });
+      return;
+    }
+
+    // Resolve the target role name
+    const roleRow = await query('SELECT name FROM roles WHERE id = $1', [roleId]);
+    if (roleRow.rows.length === 0) {
+      res.status(400).json({ success: false, message: 'Invalid role ID' });
+      return;
+    }
+    const targetRoleName: string = roleRow.rows[0].name;
+
+    // Phase 10: Only an existing Admin can create another Admin
+    // (This route is already Admin-only, so req.user.role === 'Admin' is guaranteed,
+    //  but we keep the check for defence-in-depth and clarity.)
+    if (targetRoleName === 'Admin' && req.user?.role !== 'Admin') {
+      res.status(403).json({
+        success: false,
+        message: 'Admin creation not allowed'
+      });
       return;
     }
 
@@ -552,12 +635,18 @@ export const createUser = async (req: AuthRequest, res: Response): Promise<void>
       `INSERT INTO users (email, password_hash, first_name, last_name, role_id, phone, password_changed_at)
        VALUES ($1, $2, $3, $4, $5, $6, NOW())
        RETURNING id, email, first_name, last_name, role_id, is_active, created_at`,
-      [emailLower, passwordHash, firstName.trim(), lastName.trim(), roleId, phone]
+      [emailLower, passwordHash, firstName.trim(), lastName.trim(), roleId, phone || null]
     );
 
     const user = result.rows[0];
     await query(`INSERT INTO user_preferences (user_id, language) VALUES ($1, 'en') ON CONFLICT DO NOTHING`, [user.id]);
-    await logActivity(req.user!.id, 'user_created', 'user', user.id, req, { email: emailLower, role: roleId });
+
+    // Phase 10: enhanced activity log – CREATE_USER
+    await logActivity(req.user!.id, 'CREATE_USER', 'user', user.id, req, {
+      email: emailLower,
+      role: targetRoleName,
+      createdBy: req.user!.id
+    });
 
     res.status(201).json({ success: true, data: user, message: 'User created successfully' });
   } catch (error) {
@@ -572,10 +661,29 @@ export const updateUser = async (req: AuthRequest, res: Response): Promise<void>
     const { id } = req.params;
     const { firstName, lastName, phone, roleId, isActive } = req.body;
 
-    const existing = await query('SELECT id, role_id FROM users WHERE id = $1', [id]);
+    const existing = await query(
+      `SELECT u.id, r.name as role_name FROM users u LEFT JOIN roles r ON u.role_id = r.id WHERE u.id = $1`,
+      [id]
+    );
     if (existing.rows.length === 0) {
       res.status(404).json({ success: false, message: 'User not found' });
       return;
+    }
+
+    // Phase 10: If the caller is changing the role, check Admin-creation restriction
+    let targetRoleName = existing.rows[0].role_name;
+    if (roleId) {
+      const roleRow = await query('SELECT name FROM roles WHERE id = $1', [roleId]);
+      if (roleRow.rows.length === 0) {
+        res.status(400).json({ success: false, message: 'Invalid role ID' });
+        return;
+      }
+      targetRoleName = roleRow.rows[0].name;
+
+      if (targetRoleName === 'Admin' && req.user?.role !== 'Admin') {
+        res.status(403).json({ success: false, message: 'Admin creation not allowed' });
+        return;
+      }
     }
 
     const result = await query(
@@ -585,7 +693,18 @@ export const updateUser = async (req: AuthRequest, res: Response): Promise<void>
       [firstName, lastName, phone, roleId, isActive !== undefined ? isActive : true, id]
     );
 
-    await logActivity(req.user!.id, 'user_updated', 'user', id, req, { changes: req.body });
+    // Phase 10: enhanced activity log – UPDATE_USER_ROLE if role changed
+    const oldRole = existing.rows[0].role_name;
+    if (roleId && targetRoleName !== oldRole) {
+      await logActivity(req.user!.id, 'UPDATE_USER_ROLE', 'user', id, req, {
+        email: result.rows[0].email,
+        oldRole,
+        newRole: targetRoleName,
+        changedBy: req.user!.id
+      });
+    } else {
+      await logActivity(req.user!.id, 'user_updated', 'user', id, req, { changes: req.body });
+    }
 
     res.json({ success: true, data: result.rows[0], message: 'User updated successfully' });
   } catch (error) {
@@ -607,7 +726,7 @@ export const deleteUser = async (req: AuthRequest, res: Response): Promise<void>
 
     // Check if target is admin
     const targetUser = await query(
-      `SELECT u.id, r.name as role_name FROM users u LEFT JOIN roles r ON u.role_id = r.id WHERE u.id = $1`,
+      `SELECT u.id, u.email, r.name as role_name FROM users u LEFT JOIN roles r ON u.role_id = r.id WHERE u.id = $1`,
       [id]
     );
     if (targetUser.rows.length === 0) {
@@ -628,7 +747,13 @@ export const deleteUser = async (req: AuthRequest, res: Response): Promise<void>
 
     // Soft delete (deactivate instead of hard delete)
     await query(`UPDATE users SET is_active = FALSE, updated_at = NOW() WHERE id = $1`, [id]);
-    await logActivity(req.user!.id, 'user_deactivated', 'user', id, req);
+
+    // Phase 10: enhanced activity log – DEACTIVATE_USER
+    await logActivity(req.user!.id, 'DEACTIVATE_USER', 'user', id, req, {
+      email: targetUser.rows[0].email,
+      role: targetUser.rows[0].role_name,
+      deactivatedBy: req.user!.id
+    });
 
     res.json({ success: true, message: 'User deactivated successfully' });
   } catch (error) {
@@ -641,11 +766,24 @@ export const deleteUser = async (req: AuthRequest, res: Response): Promise<void>
 export const unlockUser = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
+
+    const targetUser = await query(
+      `SELECT u.email, r.name as role_name FROM users u LEFT JOIN roles r ON u.role_id = r.id WHERE u.id = $1`,
+      [id]
+    );
+
     await query(
       `UPDATE users SET locked_until = NULL, failed_login_attempts = 0, updated_at = NOW() WHERE id = $1`,
       [id]
     );
-    await logActivity(req.user!.id, 'user_unlocked', 'user', id, req);
+
+    // Phase 10: enhanced activity log – UNLOCK_USER
+    await logActivity(req.user!.id, 'UNLOCK_USER', 'user', id, req, {
+      email: targetUser.rows[0]?.email,
+      role: targetUser.rows[0]?.role_name,
+      unlockedBy: req.user!.id
+    });
+
     res.json({ success: true, message: 'User account unlocked successfully' });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Failed to unlock user' });
@@ -663,6 +801,11 @@ export const adminResetPassword = async (req: AuthRequest, res: Response): Promi
       return;
     }
 
+    const targetUser = await query(
+      `SELECT u.email, r.name as role_name FROM users u LEFT JOIN roles r ON u.role_id = r.id WHERE u.id = $1`,
+      [id]
+    );
+
     const passwordHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
     await query(
       `UPDATE users SET password_hash = $1, failed_login_attempts = 0, locked_until = NULL,
@@ -671,7 +814,13 @@ export const adminResetPassword = async (req: AuthRequest, res: Response): Promi
     );
 
     await query(`UPDATE user_sessions SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL`, [id]);
-    await logActivity(req.user!.id, 'admin_reset_password', 'user', id, req);
+
+    // Phase 10: enhanced activity log – RESET_PASSWORD
+    await logActivity(req.user!.id, 'RESET_PASSWORD', 'user', id, req, {
+      email: targetUser.rows[0]?.email,
+      role: targetUser.rows[0]?.role_name,
+      resetBy: req.user!.id
+    });
 
     res.json({ success: true, message: 'Password reset successfully' });
   } catch (error) {
