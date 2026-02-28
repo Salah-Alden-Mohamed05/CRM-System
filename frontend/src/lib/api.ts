@@ -55,9 +55,22 @@ export default api;
 
 // ── Auth ──────────────────────────────────────────────────────
 export const authAPI = {
+  // ── Bootstrap ─────────────────────────────────────────────
+  /** GET /auth/setup-status → { needsSetup: boolean } */
+  setupStatus: () => api.get('/auth/setup-status'),
+  /** POST /auth/setup-admin → create first Admin (only when needsSetup=true) */
+  setupAdmin: (data: {
+    email: string;
+    password: string;
+    firstName: string;
+    lastName: string;
+    phone?: string;
+  }) => api.post('/auth/setup-admin', data),
+
+  // ── Standard Auth ─────────────────────────────────────────
   login: (data: { email: string; password: string; rememberMe?: boolean }) =>
     api.post('/auth/login', data),
-  register: (data: unknown) => api.post('/auth/register', data),
+  // NOTE: public /register has been removed – use POST /auth/users (Admin-only)
   logout: (data?: { refreshToken?: string }) => api.post('/auth/logout', data || {}),
   me: () => api.get('/auth/me'),
   refreshToken: (token: string) => api.post('/auth/refresh-token', { refreshToken: token }),

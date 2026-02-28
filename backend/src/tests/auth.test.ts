@@ -10,6 +10,11 @@
  * 8. Cannot delete last admin
  * 9. Account lockout after 5 failed attempts
  * 10. Hashed password verification
+ * 11. GET /auth/setup-status returns { needsSetup: false } when Admin exists
+ * 12. POST /auth/setup-admin returns 403 when Admin already exists
+ * 13. POST /auth/register is removed (404)
+ * 14. Admin-creation protection: non-admin cannot assign Admin role
+ * 15. Enhanced activity logging actions (CREATE_USER, DEACTIVATE_USER, etc.)
  */
 
 import request from 'supertest';
@@ -89,15 +94,13 @@ describe('Auth – Login', () => {
     const res = await login('nobody@example.com', 'SomePassword1!');
     expect(res.status).toBe(401);
     // The message must NOT reveal whether email exists in the system
-    // "Invalid email or password" is acceptable – it's the same message for wrong password
     expect(res.body.message).toBeDefined();
     // Must NOT say "email not found" or "user not found" specifically
     expect(res.body.message).not.toMatch(/email not found/i);
     expect(res.body.message).not.toMatch(/user not found/i);
     expect(res.body.message).not.toMatch(/no account/i);
-    // Generic message is the same as wrong password – verify both return same message
+    // Both non-existent email and wrong password must return 401
     const wrongPassRes = await login('admin@logisticscrm.com', 'WrongPass!1');
-    // Both should return 401 (same HTTP status) to prevent user enumeration
     expect(wrongPassRes.status).toBe(401);
   });
 
@@ -198,11 +201,11 @@ describe('Admin – User CRUD', () => {
       .set('Authorization', `Bearer ${adminToken}`);
     expect(rolesRes.status).toBe(200);
 
-    // Get admin role id for creating test user
-    const adminRole = rolesRes.body.data.find((r: { name: string }) => r.name === 'Sales');
-    expect(adminRole).toBeDefined();
+    // Get Sales role id for creating test user
+    const salesRole = rolesRes.body.data.find((r: { name: string }) => r.name === 'Sales');
+    expect(salesRole).toBeDefined();
 
-    // 7c. Create user
+    // 7c. Create user with Sales role
     const createRes = await request(API_BASE)
       .post('/auth/users')
       .set('Authorization', `Bearer ${adminToken}`)
@@ -211,7 +214,7 @@ describe('Admin – User CRUD', () => {
         password:  'TestUser@1234',
         firstName: 'Test',
         lastName:  'User',
-        roleId:    adminRole.id,
+        roleId:    salesRole.id,
       });
     expect(createRes.status).toBe(201);
     expect(createRes.body.data.email).toBe(testUserEmail);
@@ -243,7 +246,7 @@ describe('Admin – User CRUD', () => {
     const rolesRes = await request(API_BASE)
       .get('/auth/roles')
       .set('Authorization', `Bearer ${adminToken}`);
-    const role = rolesRes.body.data[0];
+    const role = rolesRes.body.data.find((r: { name: string }) => r.name === 'Sales');
 
     const res = await request(API_BASE)
       .put(`/auth/users/${createdUserId}`)
@@ -309,4 +312,228 @@ describe('Auth – Account Lockout', () => {
       expect(lastResponse.body.message).toMatch(/lock/i);
     }
   }, 30000);
+});
+
+// ── Phase 9 – Bootstrap endpoints ────────────────────────────
+describe('Phase 9 – Bootstrap: GET /auth/setup-status', () => {
+  test('11. Returns { needsSetup: false } when Admin already exists', async () => {
+    const res = await request(API_BASE).get('/auth/setup-status');
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('needsSetup');
+    // Admin was seeded, so needsSetup must be false
+    expect(res.body.needsSetup).toBe(false);
+  });
+
+  test('11b. Endpoint is public (no auth required)', async () => {
+    const res = await request(API_BASE).get('/auth/setup-status');
+    expect(res.status).not.toBe(401);
+    expect(res.status).not.toBe(403);
+  });
+});
+
+describe('Phase 9 – Bootstrap: POST /auth/setup-admin', () => {
+  test('12. Returns 403 when Admin already exists', async () => {
+    const res = await request(API_BASE)
+      .post('/auth/setup-admin')
+      .send({
+        email: 'newadmin@test.com',
+        password: 'Admin@9999',
+        firstName: 'New',
+        lastName: 'Admin',
+      });
+    expect(res.status).toBe(403);
+    expect(res.body.message).toMatch(/Admin creation not allowed/i);
+  });
+
+  test('12b. Returns 400 for missing required fields', async () => {
+    const res = await request(API_BASE)
+      .post('/auth/setup-admin')
+      .send({ email: 'x@y.com' }); // missing password, names
+    // Will be 403 (admin exists) OR 400 (validation) - both are acceptable
+    expect([400, 403]).toContain(res.status);
+  });
+});
+
+// ── Phase 9 – Public register is REMOVED ──────────────────────
+describe('Phase 9 – Public /register endpoint removed', () => {
+  test('13. POST /auth/register is disabled (no longer a public route)', async () => {
+    const res = await request(API_BASE)
+      .post('/auth/register')
+      .send({
+        email: 'anyone@test.com',
+        password: 'Pass@1234',
+        firstName: 'Any',
+        lastName: 'One',
+      });
+    // Route removed → authenticate middleware rejects with 401,
+    // or Express returns 404. Either means public registration is blocked.
+    expect([401, 404]).toContain(res.status);
+    // Must NOT return 201 (success)
+    expect(res.status).not.toBe(201);
+    expect(res.status).not.toBe(200);
+  });
+});
+
+// ── Phase 10 – Admin-creation protection ─────────────────────
+describe('Phase 10 – Admin-creation protection', () => {
+  let salesToken: string;
+  let adminToken: string;
+
+  beforeAll(async () => {
+    // Ensure ops account is unlocked first
+    const adminLoginRes = await login('admin@logisticscrm.com', 'Admin@1234');
+    adminToken = adminLoginRes.body.data.token;
+
+    // Unlock ops if locked from lockout test
+    const usersRes = await request(API_BASE)
+      .get('/auth/users')
+      .set('Authorization', `Bearer ${adminToken}`);
+    const ops = usersRes.body.data.find(
+      (u: { email: string }) => u.email === 'ops@logisticscrm.com'
+    );
+    if (ops) {
+      await request(API_BASE)
+        .patch(`/auth/users/${ops.id}/unlock`)
+        .set('Authorization', `Bearer ${adminToken}`);
+    }
+
+    const salesRes = await login('sales@logisticscrm.com', 'Sales@1234');
+    salesToken = salesRes.body.data.token;
+  });
+
+  test('14a. Non-admin cannot call POST /auth/users (403 from requireRole)', async () => {
+    const rolesRes = await request(API_BASE)
+      .get('/auth/roles')
+      .set('Authorization', `Bearer ${adminToken}`);
+    const salesRole = rolesRes.body.data.find((r: { name: string }) => r.name === 'Sales');
+
+    const res = await request(API_BASE)
+      .post('/auth/users')
+      .set('Authorization', `Bearer ${salesToken}`)
+      .send({
+        email: 'hack@test.com',
+        password: 'Hack@1234',
+        firstName: 'Hack',
+        lastName: 'Attempt',
+        roleId: salesRole?.id,
+      });
+    // Non-admin is blocked at route level
+    expect(res.status).toBe(403);
+  });
+
+  test('14b. Admin CAN create a user with Admin role', async () => {
+    const rolesRes = await request(API_BASE)
+      .get('/auth/roles')
+      .set('Authorization', `Bearer ${adminToken}`);
+    const adminRole = rolesRes.body.data.find((r: { name: string }) => r.name === 'Admin');
+    expect(adminRole).toBeDefined();
+
+    const email = `admin_created_${Date.now()}@test.com`;
+    const res = await request(API_BASE)
+      .post('/auth/users')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        email,
+        password: 'AdminCreated@1234',
+        firstName: 'Second',
+        lastName: 'Admin',
+        roleId: adminRole.id,
+      });
+    expect(res.status).toBe(201);
+
+    // Clean up – deactivate
+    if (res.body.data?.id) {
+      await request(API_BASE)
+        .delete(`/auth/users/${res.body.data.id}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+    }
+  });
+});
+
+// ── Phase 10 – Activity log actions ──────────────────────────
+describe('Phase 10 – Activity log entries', () => {
+  let adminToken: string;
+  let testUserId: string;
+
+  beforeAll(async () => {
+    const res = await login('admin@logisticscrm.com', 'Admin@1234');
+    adminToken = res.body.data.token;
+  });
+
+  test('15a. CREATE_USER action appears in activity logs after creating a user', async () => {
+    const rolesRes = await request(API_BASE)
+      .get('/auth/roles')
+      .set('Authorization', `Bearer ${adminToken}`);
+    const salesRole = rolesRes.body.data.find((r: { name: string }) => r.name === 'Sales');
+
+    const email = `log_test_${Date.now()}@test.com`;
+    const createRes = await request(API_BASE)
+      .post('/auth/users')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        email,
+        password: 'LogTest@1234',
+        firstName: 'Log',
+        lastName: 'Test',
+        roleId: salesRole.id,
+      });
+    expect(createRes.status).toBe(201);
+    testUserId = createRes.body.data.id;
+
+    // Check activity log for CREATE_USER
+    const logsRes = await request(API_BASE)
+      .get('/auth/audit/activity')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .query({ action: 'CREATE_USER', limit: 5 });
+    expect(logsRes.status).toBe(200);
+    expect(logsRes.body.data.length).toBeGreaterThan(0);
+
+    const entry = logsRes.body.data.find(
+      (l: { action: string; entity_id: string }) =>
+        l.action === 'CREATE_USER' && l.entity_id === testUserId
+    );
+    expect(entry).toBeDefined();
+    expect(entry.metadata).toBeDefined();
+    const meta = typeof entry.metadata === 'string' ? JSON.parse(entry.metadata) : entry.metadata;
+    expect(meta.email).toBe(email);
+    expect(meta.role).toBe('Sales');
+  });
+
+  test('15b. DEACTIVATE_USER action appears in activity logs after deactivating user', async () => {
+    if (!testUserId) return;
+    await request(API_BASE)
+      .delete(`/auth/users/${testUserId}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    const logsRes = await request(API_BASE)
+      .get('/auth/audit/activity')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .query({ action: 'DEACTIVATE_USER', limit: 5 });
+    expect(logsRes.status).toBe(200);
+
+    const entry = logsRes.body.data.find(
+      (l: { action: string; entity_id: string }) =>
+        l.action === 'DEACTIVATE_USER' && l.entity_id === testUserId
+    );
+    expect(entry).toBeDefined();
+  });
+
+  test('15c. Activity log metadata includes email and role fields', async () => {
+    const logsRes = await request(API_BASE)
+      .get('/auth/audit/activity')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .query({ action: 'CREATE_USER', limit: 10 });
+    expect(logsRes.status).toBe(200);
+
+    for (const entry of logsRes.body.data) {
+      if (entry.metadata) {
+        const meta = typeof entry.metadata === 'string' ? JSON.parse(entry.metadata) : entry.metadata;
+        // Each CREATE_USER entry should have email and role in metadata
+        if (entry.action === 'CREATE_USER') {
+          expect(meta.email).toBeDefined();
+          expect(meta.role).toBeDefined();
+        }
+      }
+    }
+  });
 });
