@@ -95,8 +95,16 @@ async function seed() {
     `);
 
     // Ensure email_lower is populated for existing users (idempotent)
+    // The trigger handles new inserts, but we need to backfill existing rows
     await client.query(`
-      UPDATE users SET email_lower = LOWER(email) WHERE email_lower IS NULL OR email_lower = '';
+      UPDATE users SET email_lower = LOWER(email)
+      WHERE email_lower IS NULL OR email_lower = '';
+    `);
+
+    // Also ensure all users have correct email_lower even if trigger was added later
+    await client.query(`
+      UPDATE users SET email_lower = LOWER(email)
+      WHERE email_lower != LOWER(email);
     `);
 
     // Ensure user_preferences exist for all users

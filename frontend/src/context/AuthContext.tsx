@@ -30,8 +30,6 @@ export interface User {
 interface AuthContextType {
   user: User | null;
   loading: boolean;
-  /** True while the root page is checking /auth/setup-status */
-  needsSetup: boolean | null;
   login: (email: string, password: string, rememberMe?: boolean) => Promise<void>;
   logout: () => void;
   isAuthenticated: boolean;
@@ -46,7 +44,6 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [needsSetup, setNeedsSetup] = useState<boolean | null>(null);
   const [language, setLanguageState] = useState<'en' | 'ar'>('en');
 
   // Persist language in localStorage + apply RTL
@@ -69,14 +66,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const savedLang = (localStorage.getItem('language') as 'en' | 'ar') || 'en';
 
       applyLanguage(savedLang);
-
-      // Check setup status first (non-blocking)
-      try {
-        const setupRes = await authAPI.setupStatus();
-        setNeedsSetup(setupRes.data?.needsSetup === true);
-      } catch {
-        setNeedsSetup(false); // assume setup done on error
-      }
 
       if (token && savedUser) {
         try {
@@ -210,7 +199,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       value={{
         user,
         loading,
-        needsSetup,
         login,
         logout,
         isAuthenticated: !!user,

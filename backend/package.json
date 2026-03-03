@@ -9,6 +9,7 @@
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
     "migrate": "node dist/db/migrate.js",
     "seed": "node dist/db/seed.js",
+    "setup": "npm run build && npm run migrate",
     "test": "jest --testTimeout=30000 --forceExit",
     "test:watch": "jest --watch --testTimeout=30000"
   },
