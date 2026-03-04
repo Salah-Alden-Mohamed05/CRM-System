@@ -70,14 +70,14 @@ export default function DashboardPage() {
 
   return (
     <MainLayout>
-      <div className="space-y-6">
+      <div className="p-6 space-y-6 max-w-screen-2xl mx-auto">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Operations Dashboard</h1>
             <p className="text-gray-500 text-sm mt-1">{format(new Date(), 'EEEE, MMMM do yyyy')}</p>
           </div>
-          <button onClick={fetchData} className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700 font-medium">
+          <button onClick={fetchData} className="flex items-center gap-2 px-3 py-1.5 text-sm text-blue-600 hover:text-blue-700 border border-blue-200 hover:bg-blue-50 rounded-lg font-medium transition-colors">
             <Activity className="w-4 h-4" />
             Refresh
           </button>

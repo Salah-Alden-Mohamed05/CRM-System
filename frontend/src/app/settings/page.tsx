@@ -78,7 +78,14 @@ export default function SettingsPage() {
 
   const handleCreateUser = async () => {
     try {
-      await authAPI.register(createForm);
+      await authAPI.createUser({
+        firstName: createForm.first_name,
+        lastName:  createForm.last_name,
+        email:     createForm.email,
+        password:  createForm.password,
+        roleId:    createForm.role_id,
+        isActive:  true,
+      });
       setShowCreateModal(false);
       setCreateForm({ first_name: '', last_name: '', email: '', password: '', role_id: '' });
       loadData();
@@ -106,7 +113,7 @@ export default function SettingsPage() {
 
   return (
     <MainLayout>
-      <div className="space-y-6">
+      <div className="p-6 space-y-6 max-w-screen-2xl mx-auto">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
           <p className="text-sm text-gray-500 mt-1">Manage users, roles, and system configuration</p>

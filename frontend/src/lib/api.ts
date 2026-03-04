@@ -196,3 +196,13 @@ export const dashboardAPI = {
   getCustomerProfitability: () => api.get('/dashboard/customer-profitability'),
   getKPIs: (params?: unknown) => api.get('/dashboard/kpis', { params }),
 };
+
+// ── Tasks ────────────────────────────────────────────────────
+export const tasksAPI = {
+  getAll:    (params?: unknown) => api.get('/tasks', { params }),
+  getStats:  ()                 => api.get('/tasks/stats'),
+  create:    (data: unknown)    => api.post('/tasks', data),
+  update:    (id: string, data: unknown) => api.put(`/tasks/${id}`, data),
+  complete:  (id: string, data?: unknown) => api.patch(`/tasks/${id}/complete`, data || {}),
+  delete:    (id: string)       => api.delete(`/tasks/${id}`),
+};

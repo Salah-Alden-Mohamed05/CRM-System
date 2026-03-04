@@ -87,17 +87,24 @@ interface UserModalProps {
 
 function UserModal({ user, roles, onSave, onClose }: UserModalProps) {
   const { t } = useTranslation();
+  // Find a default non-Admin role (e.g. Sales) or fall back to first role
+  const defaultRoleId = user?.role_id
+    || roles.find(r => r.name === 'Sales')?.id
+    || roles.find(r => r.name !== 'Admin')?.id
+    || roles[0]?.id
+    || '';
   const [form, setForm] = useState({
     first_name:  user?.first_name  || '',
     last_name:   user?.last_name   || '',
     email:       user?.email       || '',
     phone:       user?.phone       || '',
     password:    '',
-    role_id:     user?.role_id     || (roles[0]?.id || ''),
+    role_id:     defaultRoleId,
     is_active:   user?.is_active !== undefined ? user.is_active : true,
   });
   const [showPassword, setShowPassword] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [apiError, setApiError] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const isEditing = !!user;
 
@@ -116,6 +123,7 @@ function UserModal({ user, roles, onSave, onClose }: UserModalProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setApiError('');
     if (!validate()) return;
     setSaving(true);
     try {
@@ -129,6 +137,9 @@ function UserModal({ user, roles, onSave, onClose }: UserModalProps) {
       };
       if (form.password) payload.password = form.password;
       await onSave(payload);
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message || 'Failed to save user';
+      setApiError(msg);
     } finally {
       setSaving(false);
     }
@@ -150,6 +161,13 @@ function UserModal({ user, roles, onSave, onClose }: UserModalProps) {
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          {/* API Error Banner */}
+          {apiError && (
+            <div className="flex items-start gap-3 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+              <XCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+              <span>{apiError}</span>
+            </div>
+          )}
           {/* Name row */}
           <div className="grid grid-cols-2 gap-3">
             {[
@@ -446,28 +464,18 @@ export default function AdminUsersPage() {
 
   // ── CRUD handlers ──────────────────────────────────────────
   const handleCreate = async (data: Record<string, string | boolean>) => {
-    try {
-      await authAPI.createUser(data);
-      addToast(t('users.userCreated'), 'success');
-      setShowCreateModal(false);
-      loadData();
-    } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message || 'Failed to create user';
-      addToast(msg, 'error');
-    }
+    await authAPI.createUser(data); // throws on error → modal shows inline error
+    addToast(t('users.userCreated'), 'success');
+    setShowCreateModal(false);
+    loadData();
   };
 
   const handleUpdate = async (data: Record<string, string | boolean>) => {
     if (!editingUser) return;
-    try {
-      await authAPI.updateUser(editingUser.id, data);
-      addToast(t('users.userUpdated'), 'success');
-      setEditingUser(null);
-      loadData();
-    } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message || 'Failed to update user';
-      addToast(msg, 'error');
-    }
+    await authAPI.updateUser(editingUser.id, data); // throws → modal shows inline error
+    addToast(t('users.userUpdated'), 'success');
+    setEditingUser(null);
+    loadData();
   };
 
   const handleDelete = async () => {
@@ -512,7 +520,7 @@ export default function AdminUsersPage() {
 
   return (
     <MainLayout>
-      <div className="space-y-6">
+      <div className="p-6 space-y-6 max-w-screen-2xl mx-auto">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
@@ -679,7 +687,7 @@ export default function AdminUsersPage() {
                             ) : u.is_active ? (
                               <Badge variant="success" className="w-fit text-xs">{t('common.active')}</Badge>
                             ) : (
-                              <Badge variant="secondary" className="w-fit text-xs">{t('common.inactive')}</Badge>
+                              <Badge variant="danger" className="w-fit text-xs">{t('common.inactive')}</Badge>
                             )}
                             {u.failed_login_attempts > 0 && !locked && (
                               <span className="text-xs text-orange-600 flex items-center gap-1">

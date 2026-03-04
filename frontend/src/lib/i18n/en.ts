@@ -126,4 +126,10 @@ export const en = {
   },
 } as const;
 
-export type Translations = typeof en;
+// DeepStringRecord: mirrors the structure of `en` but allows any string values
+// This lets Arabic (and other) translations use their own strings.
+type DeepStringRecord<T> = {
+  [K in keyof T]: T[K] extends string ? string : T[K] extends object ? DeepStringRecord<T[K]> : never;
+};
+
+export type Translations = DeepStringRecord<typeof en>;

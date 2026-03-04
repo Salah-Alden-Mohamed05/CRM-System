@@ -26,23 +26,24 @@ A **full-stack, production-ready CRM** built for international logistics compani
 
 ---
 
-## 🔑 Demo Credentials
+## 🆕 First-Time Setup
 
-| Role | Email | Password |
-|------|-------|----------|
-| **Admin** | admin@logisticscrm.com | Admin@1234 |
-| **Sales** | sales@logisticscrm.com | Sales@1234 |
-| **Operations** | ops@logisticscrm.com | Ops@1234 |
-| **Finance** | finance@logisticscrm.com | Finance@1234 |
-| **Support** | support@logisticscrm.com | Support@1234 |
+1. Run `bash install.sh` (installs deps, creates DB, applies schema)
+2. Run `bash start.sh` to launch the app
+3. Open **http://localhost:3000**
+4. Click **"Create Admin Account"** and enter your details
+5. Sign in → **Users Management** → add your team members (Sales, Operations, Finance, Support)
+
+> No demo data is loaded by default. Each role sees only the data assigned to them.
 
 ---
 
 ## 📦 Modules
 
 ### 1. 🔐 Authentication & Users
-- JWT-based login/register
+- JWT-based login with first-admin bootstrap
 - Role-Based Access Control (Admin, Sales, Operations, Support, Finance)
+- **Data isolation**: each user sees only their own records; Admin sees all
 - Password hashing (bcrypt)
 - User activity audit logs
 - Last login tracking
@@ -229,7 +230,7 @@ cd backend
 npm install
 cp .env.example .env   # Edit with your DB credentials
 npm run build
-node dist/db/seed.js   # Seed demo data
+node dist/db/seed.js   # Seed roles (idempotent, no demo data)
 node dist/server.js    # Start server on port 5000
 ```
 
