@@ -13,8 +13,17 @@ export const getOpportunities = async (req: AuthRequest, res: Response): Promise
     const params: unknown[] = [];
     const conditions: string[] = [];
 
+    // Role-based filtering: non-Admin users see only their own opportunities
+    const isAdmin = req.user?.role === 'Admin';
+    if (!isAdmin) {
+      params.push(req.user!.id);
+      conditions.push(`o.assigned_to = $${params.length}`);
+    } else if (assignedTo) {
+      params.push(assignedTo);
+      conditions.push(`o.assigned_to = $${params.length}`);
+    }
+
     if (stage) { params.push(stage); conditions.push(`o.stage = $${params.length}`); }
-    if (assignedTo) { params.push(assignedTo); conditions.push(`o.assigned_to = $${params.length}`); }
     if (search) { params.push(`%${search}%`); conditions.push(`(o.title ILIKE $${params.length} OR c.company_name ILIKE $${params.length})`); }
 
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -196,9 +205,15 @@ export const addActivity = async (req: AuthRequest, res: Response): Promise<void
 
 export const getLeads = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
+    const isAdmin = req.user?.role === 'Admin';
+    const whereClause = isAdmin
+      ? ''
+      : `WHERE l.assigned_to = '${req.user!.id}'`;
+
     const result = await query(
       `SELECT l.*, u.first_name || ' ' || u.last_name as assigned_to_name
        FROM leads l LEFT JOIN users u ON l.assigned_to = u.id
+       ${whereClause}
        ORDER BY l.created_at DESC`
     );
     res.json({ success: true, data: result.rows, total: result.rowCount });

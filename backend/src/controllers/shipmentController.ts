@@ -9,6 +9,13 @@ export const getShipments = async (req: AuthRequest, res: Response): Promise<voi
     const params: unknown[] = [];
     const conditions: string[] = [];
 
+    // RBAC: Operations/non-Admin users see only shipments assigned to them or created by them
+    const isAdmin = req.user?.role === 'Admin';
+    if (!isAdmin) {
+      params.push(req.user!.id);
+      conditions.push(`(s.assigned_to = $${params.length} OR s.created_by = $${params.length})`);
+    }
+
     if (status) { params.push(status); conditions.push(`s.status = $${params.length}`); }
     if (customerId) { params.push(customerId); conditions.push(`s.customer_id = $${params.length}`); }
     if (isDelayed === 'true') { conditions.push(`s.is_delayed = true`); }

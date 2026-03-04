@@ -9,6 +9,13 @@ export const getCustomers = async (req: AuthRequest, res: Response): Promise<voi
     const params: unknown[] = [];
     const conditions: string[] = [];
 
+    // RBAC: non-Admin users see only customers assigned to them or created by them
+    const isAdmin = req.user?.role === 'Admin';
+    if (!isAdmin) {
+      params.push(req.user!.id);
+      conditions.push(`(c.assigned_to = $${params.length} OR c.created_by = $${params.length})`);
+    }
+
     if (search) {
       params.push(`%${search}%`);
       conditions.push(`(c.company_name ILIKE $${params.length} OR c.industry ILIKE $${params.length})`);
@@ -46,8 +53,9 @@ export const getCustomers = async (req: AuthRequest, res: Response): Promise<voi
 export const getCustomer = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const result = await query(
-      `SELECT c.*,
+    const isAdmin = req.user?.role === 'Admin';
+
+    let sql = `SELECT c.*,
         u.first_name || ' ' || u.last_name as assigned_to_name,
         (SELECT JSON_AGG(ct.*) FROM contacts ct WHERE ct.customer_id = c.id) as contacts,
         (SELECT JSON_AGG(s.* ORDER BY s.created_at DESC) FROM shipments s WHERE s.customer_id = c.id LIMIT 10) as recent_shipments,
@@ -56,9 +64,15 @@ export const getCustomer = async (req: AuthRequest, res: Response): Promise<void
         (SELECT COALESCE(SUM(outstanding_amount),0) FROM invoices WHERE customer_id = c.id AND status != 'paid') as outstanding_balance
        FROM customers c
        LEFT JOIN users u ON c.assigned_to = u.id
-       WHERE c.id = $1`,
-      [id]
-    );
+       WHERE c.id = $1`;
+
+    const queryParams: unknown[] = [id];
+    if (!isAdmin) {
+      queryParams.push(req.user!.id);
+      sql += ` AND (c.assigned_to = $2 OR c.created_by = $2)`;
+    }
+
+    const result = await query(sql, queryParams);
 
     if (result.rows.length === 0) {
       res.status(404).json({ success: false, message: 'Customer not found' });
@@ -73,6 +87,11 @@ export const getCustomer = async (req: AuthRequest, res: Response): Promise<void
 export const createCustomer = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { companyName, industry, country, city, address, website, taxId, creditLimit, paymentTerms, status, notes, assignedTo } = req.body;
+
+    if (!companyName) {
+      res.status(400).json({ success: false, message: 'Company name is required' });
+      return;
+    }
 
     const result = await query(
       `INSERT INTO customers (company_name, industry, country, city, address, website, tax_id, credit_limit, payment_terms, status, notes, assigned_to, created_by)
@@ -95,6 +114,20 @@ export const updateCustomer = async (req: AuthRequest, res: Response): Promise<v
   try {
     const { id } = req.params;
     const { companyName, industry, country, city, address, website, taxId, creditLimit, paymentTerms, status, notes, assignedTo } = req.body;
+
+    // Non-admin can only update customers assigned to them
+    const isAdmin = req.user?.role === 'Admin';
+    if (!isAdmin) {
+      const check = await query('SELECT assigned_to, created_by FROM customers WHERE id=$1', [id]);
+      if (check.rows.length === 0) {
+        res.status(404).json({ success: false, message: 'Customer not found' });
+        return;
+      }
+      if (check.rows[0].assigned_to !== req.user!.id && check.rows[0].created_by !== req.user!.id) {
+        res.status(403).json({ success: false, message: 'You can only update your own customers' });
+        return;
+      }
+    }
 
     const result = await query(
       `UPDATE customers SET company_name=$1, industry=$2, country=$3, city=$4, address=$5, website=$6,
@@ -122,6 +155,13 @@ export const updateCustomer = async (req: AuthRequest, res: Response): Promise<v
 export const deleteCustomer = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
+
+    // Only Admin can delete customers
+    if (req.user?.role !== 'Admin') {
+      res.status(403).json({ success: false, message: 'Only admins can delete customers' });
+      return;
+    }
+
     const result = await query('DELETE FROM customers WHERE id=$1 RETURNING id', [id]);
     if (result.rows.length === 0) {
       res.status(404).json({ success: false, message: 'Customer not found' });

@@ -14,6 +14,7 @@ import ticketRoutes from './routes/tickets';
 import financeRoutes from './routes/finance';
 import dashboardRoutes from './routes/dashboard';
 import aiRoutes from './routes/ai';
+import tasksRoutes from './routes/tasks';
 import { errorHandler, notFound } from './middleware/validators';
 
 dotenv.config();
@@ -60,6 +61,7 @@ app.use('/api/tickets', ticketRoutes);
 app.use('/api/finance', financeRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/ai', aiRoutes);
+app.use('/api/tasks', tasksRoutes);
 
 // Error handling
 app.use(notFound);

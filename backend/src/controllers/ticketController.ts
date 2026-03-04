@@ -9,6 +9,13 @@ export const getTickets = async (req: AuthRequest, res: Response): Promise<void>
     const params: unknown[] = [];
     const conditions: string[] = [];
 
+    // RBAC: non-Admin users see only tickets assigned to them or created by them
+    const isAdmin = req.user?.role === 'Admin';
+    if (!isAdmin) {
+      params.push(req.user!.id);
+      conditions.push(`(t.assigned_to = $${params.length} OR t.created_by = $${params.length})`);
+    }
+
     if (status) { params.push(status); conditions.push(`t.status = $${params.length}`); }
     if (category) { params.push(category); conditions.push(`t.category = $${params.length}`); }
     if (priority) { params.push(priority); conditions.push(`t.priority = $${params.length}`); }

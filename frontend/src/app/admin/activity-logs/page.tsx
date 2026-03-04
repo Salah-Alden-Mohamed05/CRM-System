@@ -221,7 +221,7 @@ export default function ActivityLogsPage() {
 
   return (
     <MainLayout>
-      <div className="space-y-6">
+      <div className="p-6 space-y-6 max-w-screen-2xl mx-auto">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
