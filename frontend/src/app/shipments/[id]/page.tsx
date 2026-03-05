@@ -1,5 +1,8 @@
 'use client';
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyRecord = Record<string, any>;
+
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import MainLayout from '@/components/layout/MainLayout';
@@ -47,10 +50,10 @@ export default function ShipmentDetailPage() {
   const router = useRouter();
   const id = params.id as string;
 
-  const [shipment, setShipment] = useState<Record<string, unknown> | null>(null);
-  const [tickets, setTickets] = useState<Record<string, unknown>[]>([]);
-  const [invoices, setInvoices] = useState<Record<string, unknown>[]>([]);
-  const [aiPrediction, setAiPrediction] = useState<Record<string, unknown> | null>(null);
+  const [shipment, setShipment] = useState<AnyRecord | null>(null);
+  const [tickets, setTickets] = useState<AnyRecord[]>([]);
+  const [invoices, setInvoices] = useState<AnyRecord[]>([]);
+  const [aiPrediction, setAiPrediction] = useState<AnyRecord | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>('tracking');
   const [showStatusModal, setShowStatusModal] = useState(false);
@@ -114,7 +117,7 @@ export default function ShipmentDetailPage() {
     </MainLayout>
   );
 
-  const milestones = (shipment.milestones as Record<string, unknown>[]) || [];
+  const milestones = (shipment.milestones as AnyRecord[]) || [];
   const currentMilestoneIdx = milestoneOrder.indexOf(String(shipment.status || ''));
   const shippingModeIcon = String(shipment.shipping_mode || '').includes('air') ? Plane : Anchor;
   const ShipIcon = shippingModeIcon;
@@ -196,7 +199,7 @@ export default function ShipmentDetailPage() {
           </Card>
           <Card className="p-4">
             <p className="text-xs text-gray-500 mb-1">Open Tickets</p>
-            <p className="text-sm font-bold text-gray-900">{tickets.filter(t => (t as Record<string, unknown>).status !== 'closed').length}</p>
+            <p className="text-sm font-bold text-gray-900">{tickets.filter(t => (t as AnyRecord).status !== 'closed').length}</p>
             <p className="text-xs text-gray-400 mt-1">Support issues</p>
           </Card>
         </div>
@@ -394,7 +397,7 @@ export default function ShipmentDetailPage() {
             </div>
             <div className="space-y-3">
               {tickets.map((t) => {
-                const ticket = t as Record<string, unknown>;
+                const ticket = t as AnyRecord;
                 const priorityColors: Record<string, string> = {
                   low: 'bg-gray-100 text-gray-700',
                   medium: 'bg-yellow-100 text-yellow-700',
@@ -450,7 +453,7 @@ export default function ShipmentDetailPage() {
             <h3 className="font-semibold text-gray-900 mb-4">Finance ({invoices.length} invoices)</h3>
             <div className="space-y-3">
               {invoices.map((inv) => {
-                const invoice = inv as Record<string, unknown>;
+                const invoice = inv as AnyRecord;
                 const statusColorMap: Record<string, string> = {
                   paid: 'bg-green-100 text-green-800',
                   sent: 'bg-blue-100 text-blue-800',
