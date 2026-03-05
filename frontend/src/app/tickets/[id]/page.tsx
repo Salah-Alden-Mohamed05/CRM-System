@@ -1,5 +1,8 @@
 'use client';
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyRecord = Record<string, any>;
+
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import MainLayout from '@/components/layout/MainLayout';
@@ -42,7 +45,7 @@ export default function TicketDetailPage() {
   const { user } = useAuth();
   const id = params.id as string;
 
-  const [ticket, setTicket] = useState<Record<string, unknown> | null>(null);
+  const [ticket, setTicket] = useState<AnyRecord | null>(null);
   const [loading, setLoading] = useState(true);
   const [comment, setComment] = useState('');
   const [isInternal, setIsInternal] = useState(false);
@@ -116,7 +119,7 @@ export default function TicketDetailPage() {
     </MainLayout>
   );
 
-  const comments = (ticket.comments as Record<string, unknown>[]) || [];
+  const comments = (ticket.comments as AnyRecord[]) || [];
   const isClosed = ticket.status === 'closed';
   const slaBreached = ticket.sla_breach_at && new Date(String(ticket.sla_breach_at)) < new Date();
 
@@ -213,7 +216,7 @@ export default function TicketDetailPage() {
               </h3>
               <div className="space-y-4 max-h-96 overflow-y-auto mb-4">
                 {comments.map((c) => {
-                  const cmt = c as Record<string, unknown>;
+                  const cmt = c as AnyRecord;
                   const isOwn = cmt.created_by === user?.id;
                   return (
                     <div

@@ -1,5 +1,8 @@
 'use client';
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyRecord = Record<string, any>;
+
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import MainLayout from '@/components/layout/MainLayout';
@@ -34,8 +37,8 @@ export default function OpportunityDetailPage() {
   const router = useRouter();
   const id = params.id as string;
 
-  const [opportunity, setOpportunity] = useState<Record<string, unknown> | null>(null);
-  const [aiScore, setAiScore] = useState<Record<string, unknown> | null>(null);
+  const [opportunity, setOpportunity] = useState<AnyRecord | null>(null);
+  const [aiScore, setAiScore] = useState<AnyRecord | null>(null);
   const [loading, setLoading] = useState(true);
   const [showActivityModal, setShowActivityModal] = useState(false);
   const [showStageModal, setShowStageModal] = useState(false);
@@ -121,7 +124,7 @@ export default function OpportunityDetailPage() {
     </MainLayout>
   );
 
-  const activities = (opportunity.activities as Record<string, unknown>[]) || [];
+  const activities = (opportunity.activities as AnyRecord[]) || [];
   const currentStageIdx = stages.indexOf(String(opportunity.stage || ''));
   const weightedValue = Number(opportunity.value || 0) * (Number(opportunity.probability || 0) / 100);
 
@@ -260,7 +263,7 @@ export default function OpportunityDetailPage() {
               </div>
               <div className="space-y-3">
                 {activities.map((act) => {
-                  const a = act as Record<string, unknown>;
+                  const a = act as AnyRecord;
                   return (
                     <div key={String(a.id)} className="flex gap-3 p-3 bg-gray-50 rounded-lg">
                       <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0 text-blue-600">
