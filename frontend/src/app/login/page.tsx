@@ -3,18 +3,15 @@
 /**
  * Login / Landing Page
  * ────────────────────
- * ALWAYS shows two options:
- *  1. "Create Admin Account" – First-time setup for a company
- *  2. "Sign In"              – For existing users
+ * Single-company CRM Login
+ * ─────────────────────────
+ *  1. "Create Admin Account" – First-time setup (only when no admin exists)
+ *  2. "Sign In"              – For all users
  *
  * Flow:
- *  • If needsSetup=true  → Create Admin form is available (no admin yet)
- *  • If needsSetup=false → "Create Admin" card shows info: "Admin exists, contact your admin"
- *  • Sign In is always available
- *
- * Multi-company: Each company runs its own instance.
- * The first person to use each instance creates the Admin account,
- * then the Admin creates employee accounts via the Admin panel.
+ *  • If needsSetup=true  → Create Admin form is available
+ *  • If needsSetup=false → Admin exists; employees sign in normally
+ *  • The Admin creates employee accounts from the Admin panel.
  */
 
 import { useState, useEffect } from 'react';
@@ -250,7 +247,7 @@ export default function LoginPage() {
                   {checkingSetup
                     ? (isAr ? 'جارٍ التحقق...' : 'Checking…')
                     : needsSetup
-                      ? (isAr ? 'أول استخدام؟ أنشئ حساب مدير شركتك' : 'First time? Set up your company\'s Admin account')
+                      ? (isAr ? 'أول استخدام؟ أنشئ حساب المدير' : 'First time? Create the Admin account')
                       : (isAr ? 'إضافة مدير جديد للنظام' : 'Add a new administrator to the system')}
                 </p>
                 <div className="mt-3">
@@ -321,7 +318,7 @@ export default function LoginPage() {
                 <ul className="text-slate-400 text-xs space-y-1.5">
                   <li className="flex items-start gap-2">
                     <span className="w-5 h-5 bg-amber-500/20 text-amber-400 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0 mt-0.5">1</span>
-                    <span>{isAr ? 'المدير ينشئ حساب الشركة (إعداد أولي لكل شركة)' : 'Admin creates the company account (one-time per company)'}</span>
+                    <span>{isAr ? 'المدير ينشئ الحساب الأول (إعداد أولي للنظام)' : 'Admin creates the first account (one-time setup)'}</span>
                   </li>
                   <li className="flex items-start gap-2">
                     <span className="w-5 h-5 bg-blue-500/20 text-blue-400 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0 mt-0.5">2</span>
@@ -401,13 +398,13 @@ export default function LoginPage() {
                   <div className="text-xs text-amber-200 leading-relaxed">
                     {isAr ? (
                       <>
-                        <p className="font-medium mb-1">كيف يعمل النظام متعدد الشركات؟</p>
-                        <p>كل شركة تشغّل نظامها الخاص. المدير هو أول شخص يُسجَّل في كل نسخة من النظام، ثم يضيف موظفيه من لوحة الإدارة.</p>
+                        <p className="font-medium mb-1">كيف يعمل النظام؟</p>
+                        <p>المدير هو أول شخص يُسجَّل في النظام، ثم يضيف موظفيه من لوحة الإدارة. كل موظف يرى بياناته الخاصة فقط.</p>
                       </>
                     ) : (
                       <>
-                        <p className="font-medium mb-1">Multi-company support:</p>
-                        <p>Each company runs their own instance of this system. The first user creates the Admin account, then adds employees via the Admin panel.</p>
+                        <p className="font-medium mb-1">Single-company CRM:</p>
+                        <p>The Admin creates the first account, then adds all employees via the Admin panel. Each employee sees only their own assigned data.</p>
                       </>
                     )}
                   </div>

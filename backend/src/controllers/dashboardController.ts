@@ -228,3 +228,106 @@ export const getKPIs = async (req: AuthRequest, res: Response): Promise<void> =>
     res.status(500).json({ success: false, message: 'Failed to fetch KPIs' });
   }
 };
+
+// ─── Sales Team Performance (Admin bird's-eye view) ─────────────────────────
+export const getSalesTeamPerformance = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { period = '30' } = req.query;
+    const days = parseInt(period as string) || 30;
+
+    const [teamStats, topDeals, activitySummary, conversionRates] = await Promise.all([
+
+      // Per-salesperson KPIs
+      query(`
+        SELECT
+          u.id,
+          u.first_name || ' ' || u.last_name AS name,
+          u.email,
+          r.name AS role,
+          u.last_login,
+          u.is_active,
+          -- Deals
+          COUNT(DISTINCT d.id) FILTER (WHERE d.created_at >= NOW() - INTERVAL '${days} days') AS deals_created,
+          COUNT(DISTINCT d.id) FILTER (WHERE d.stage = 'won' AND d.updated_at >= NOW() - INTERVAL '${days} days') AS deals_won,
+          COUNT(DISTINCT d.id) FILTER (WHERE d.stage = 'lost' AND d.updated_at >= NOW() - INTERVAL '${days} days') AS deals_lost,
+          COUNT(DISTINCT d.id) FILTER (WHERE d.stage NOT IN ('won','lost')) AS deals_active,
+          COALESCE(SUM(d.value) FILTER (WHERE d.stage = 'won' AND d.updated_at >= NOW() - INTERVAL '${days} days'), 0) AS revenue_won,
+          COALESCE(SUM(d.value * d.probability / 100) FILTER (WHERE d.stage NOT IN ('won','lost')), 0) AS pipeline_weighted,
+          -- Tasks
+          COUNT(DISTINCT t.id) FILTER (WHERE t.created_at >= NOW() - INTERVAL '${days} days') AS tasks_created,
+          COUNT(DISTINCT t.id) FILTER (WHERE t.status = 'completed' AND t.updated_at >= NOW() - INTERVAL '${days} days') AS tasks_completed,
+          COUNT(DISTINCT t.id) FILTER (WHERE t.status NOT IN ('completed','cancelled') AND t.due_date < NOW()) AS tasks_overdue,
+          -- Activities
+          COUNT(DISTINCT al.id) FILTER (WHERE al.created_at >= NOW() - INTERVAL '${days} days') AS activity_count,
+          -- Customers
+          COUNT(DISTINCT c.id) FILTER (WHERE c.created_at >= NOW() - INTERVAL '${days} days') AS customers_added
+        FROM users u
+        LEFT JOIN roles r ON u.role_id = r.id
+        LEFT JOIN deals d ON (d.assigned_to = u.id OR d.created_by = u.id)
+        LEFT JOIN tasks t ON (t.user_id = u.id OR t.assigned_to = u.id)
+        LEFT JOIN activity_logs al ON al.user_id = u.id
+        LEFT JOIN customers c ON (c.assigned_to = u.id OR c.created_by = u.id)
+        WHERE u.is_active = TRUE
+        GROUP BY u.id, u.first_name, u.last_name, u.email, r.name, u.last_login, u.is_active
+        ORDER BY revenue_won DESC, deals_won DESC
+      `),
+
+      // Top deals (by value, active)
+      query(`
+        SELECT
+          d.id, d.deal_number, d.title, d.stage, d.value, d.currency,
+          d.probability, d.expected_close_date,
+          c.company_name AS customer_name,
+          u.first_name || ' ' || u.last_name AS assigned_to_name,
+          d.shipping_mode, d.origin_country, d.destination_country
+        FROM deals d
+        LEFT JOIN customers c ON d.customer_id = c.id
+        LEFT JOIN users u ON d.assigned_to = u.id
+        WHERE d.stage NOT IN ('won','lost')
+        ORDER BY d.value DESC
+        LIMIT 10
+      `),
+
+      // Activity summary by type (last N days)
+      query(`
+        SELECT
+          entity_type,
+          COUNT(*) AS count,
+          DATE_TRUNC('day', created_at)::DATE AS day
+        FROM activity_logs
+        WHERE created_at >= NOW() - INTERVAL '${days} days'
+        GROUP BY entity_type, DATE_TRUNC('day', created_at)
+        ORDER BY day DESC
+      `),
+
+      // Stage conversion rates
+      query(`
+        SELECT
+          stage,
+          COUNT(*) AS count,
+          COALESCE(SUM(value), 0) AS total_value,
+          ROUND(AVG(probability)::numeric, 1) AS avg_probability
+        FROM deals
+        GROUP BY stage
+        ORDER BY CASE stage
+          WHEN 'lead' THEN 1 WHEN 'contacted' THEN 2 WHEN 'rfq' THEN 3
+          WHEN 'quotation' THEN 4 WHEN 'negotiation' THEN 5 WHEN 'won' THEN 6 WHEN 'lost' THEN 7
+        END
+      `)
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        teamStats: teamStats.rows,
+        topDeals: topDeals.rows,
+        activitySummary: activitySummary.rows,
+        conversionRates: conversionRates.rows,
+        period: days,
+      }
+    });
+  } catch (error) {
+    console.error('getSalesTeamPerformance error:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch sales team performance' });
+  }
+};

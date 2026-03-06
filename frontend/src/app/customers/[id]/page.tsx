@@ -1,5 +1,8 @@
 'use client';
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyRecord = Record<string, any>;
+
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import MainLayout from '@/components/layout/MainLayout';
@@ -43,10 +46,10 @@ export default function CustomerDetailPage() {
   const router = useRouter();
   const id = params.id as string;
 
-  const [customer, setCustomer] = useState<Record<string, unknown> | null>(null);
-  const [shipments, setShipments] = useState<Record<string, unknown>[]>([]);
-  const [opportunities, setOpportunities] = useState<Record<string, unknown>[]>([]);
-  const [invoices, setInvoices] = useState<Record<string, unknown>[]>([]);
+  const [customer, setCustomer] = useState<AnyRecord | null>(null);
+  const [shipments, setShipments] = useState<AnyRecord[]>([]);
+  const [opportunities, setOpportunities] = useState<AnyRecord[]>([]);
+  const [invoices, setInvoices] = useState<AnyRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>('overview');
   const [showEditModal, setShowEditModal] = useState(false);
@@ -127,16 +130,16 @@ export default function CustomerDetailPage() {
   );
 
   const totalRevenue = invoices
-    .filter((i) => (i as Record<string, unknown>).status === 'paid')
-    .reduce((sum, i) => sum + Number((i as Record<string, unknown>).total_amount || 0), 0);
+    .filter((i) => (i as AnyRecord).status === 'paid')
+    .reduce((sum, i) => sum + Number((i as AnyRecord).total_amount || 0), 0);
 
   const outstanding = invoices
-    .filter((i) => ['sent', 'overdue'].includes(String((i as Record<string, unknown>).status)))
-    .reduce((sum, i) => sum + Number((i as Record<string, unknown>).total_amount || 0), 0);
+    .filter((i) => ['sent', 'overdue'].includes(String((i as AnyRecord).status)))
+    .reduce((sum, i) => sum + Number((i as AnyRecord).total_amount || 0), 0);
 
   const tabs: { id: Tab; label: string; count?: number }[] = [
     { id: 'overview', label: 'Overview' },
-    { id: 'contacts', label: 'Contacts', count: ((customer.contacts as unknown[]) || []).length },
+    { id: 'contacts', label: 'Contacts', count: ((customer.contacts as AnyRecord[]) || []).length },
     { id: 'shipments', label: 'Shipments', count: shipments.length },
     { id: 'opportunities', label: 'Opportunities', count: opportunities.length },
     { id: 'invoices', label: 'Invoices', count: invoices.length },
@@ -210,15 +213,15 @@ export default function CustomerDetailPage() {
             <p className="text-xs text-gray-500 mb-1">Shipments</p>
             <p className="text-xl font-bold text-gray-900">{shipments.length}</p>
             <p className="text-xs text-blue-600 mt-1">
-              {shipments.filter(s => (s as Record<string, unknown>).is_delayed).length} delayed
+              {shipments.filter(s => (s as AnyRecord).is_delayed).length} delayed
             </p>
           </Card>
           <Card className="p-4">
             <p className="text-xs text-gray-500 mb-1">Pipeline Value</p>
             <p className="text-xl font-bold text-gray-900">
               ${opportunities
-                .filter(o => !['won', 'lost'].includes(String((o as Record<string, unknown>).stage)))
-                .reduce((sum, o) => sum + Number((o as Record<string, unknown>).value || 0), 0)
+                .filter(o => !['won', 'lost'].includes(String((o as AnyRecord).stage)))
+                .reduce((sum, o) => sum + Number((o as AnyRecord).value || 0), 0)
                 .toLocaleString()}
             </p>
             <p className="text-xs text-gray-500 mt-1">Active deals</p>
@@ -289,7 +292,7 @@ export default function CustomerDetailPage() {
                 <h3 className="font-semibold text-gray-900 mb-3">Recent Shipments</h3>
                 <div className="space-y-2">
                   {shipments.slice(0, 4).map((s) => {
-                    const sh = s as Record<string, unknown>;
+                    const sh = s as AnyRecord;
                     return (
                       <div
                         key={String(sh.id)}
@@ -313,8 +316,8 @@ export default function CustomerDetailPage() {
               <Card className="p-6">
                 <h3 className="font-semibold text-gray-900 mb-3">Active Deals</h3>
                 <div className="space-y-2">
-                  {opportunities.filter(o => !['won', 'lost'].includes(String((o as Record<string, unknown>).stage))).slice(0, 4).map((o) => {
-                    const op = o as Record<string, unknown>;
+                  {opportunities.filter(o => !['won', 'lost'].includes(String((o as AnyRecord).stage))).slice(0, 4).map((o) => {
+                    const op = o as AnyRecord;
                     return (
                       <div
                         key={String(op.id)}
@@ -331,7 +334,7 @@ export default function CustomerDetailPage() {
                       </div>
                     );
                   })}
-                  {opportunities.filter(o => !['won', 'lost'].includes(String((o as Record<string, unknown>).stage))).length === 0 && (
+                  {opportunities.filter(o => !['won', 'lost'].includes(String((o as AnyRecord).stage))).length === 0 && (
                     <p className="text-xs text-gray-500">No active deals</p>
                   )}
                 </div>
@@ -343,7 +346,7 @@ export default function CustomerDetailPage() {
         {activeTab === 'contacts' && (
           <div>
             <div className="flex justify-between items-center mb-4">
-              <h3 className="font-semibold text-gray-900">Contacts ({((customer.contacts as unknown[]) || []).length})</h3>
+              <h3 className="font-semibold text-gray-900">Contacts ({((customer.contacts as AnyRecord[]) || []).length})</h3>
               <button
                 onClick={() => setShowContactModal(true)}
                 className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700"
@@ -353,7 +356,7 @@ export default function CustomerDetailPage() {
               </button>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {((customer.contacts as Record<string, unknown>[]) || []).map((contact) => (
+              {((customer.contacts as AnyRecord[]) || []).map((contact) => (
                 <Card key={String(contact.id)} className="p-4">
                   <div className="flex items-start gap-3">
                     <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
@@ -379,7 +382,7 @@ export default function CustomerDetailPage() {
                   </div>
                 </Card>
               ))}
-              {((customer.contacts as unknown[]) || []).length === 0 && (
+              {((customer.contacts as AnyRecord[]) || []).length === 0 && (
                 <div className="col-span-3 text-center py-8 text-gray-500">
                   <Users className="w-10 h-10 mx-auto mb-2 text-gray-300" />
                   <p className="text-sm">No contacts yet. Add the first contact.</p>
@@ -403,7 +406,7 @@ export default function CustomerDetailPage() {
             </div>
             <div className="space-y-3">
               {shipments.map((s) => {
-                const sh = s as Record<string, unknown>;
+                const sh = s as AnyRecord;
                 return (
                   <Card
                     key={String(sh.id)}
@@ -462,7 +465,7 @@ export default function CustomerDetailPage() {
             </div>
             <div className="space-y-3">
               {opportunities.map((o) => {
-                const op = o as Record<string, unknown>;
+                const op = o as AnyRecord;
                 return (
                   <Card key={String(op.id)} className="p-4">
                     <div className="flex items-center justify-between">
@@ -504,7 +507,7 @@ export default function CustomerDetailPage() {
             <h3 className="font-semibold text-gray-900 mb-4">Invoices ({invoices.length})</h3>
             <div className="space-y-3">
               {invoices.map((inv) => {
-                const invoice = inv as Record<string, unknown>;
+                const invoice = inv as AnyRecord;
                 const statusColorMap: Record<string, string> = {
                   paid: 'bg-green-100 text-green-800',
                   sent: 'bg-blue-100 text-blue-800',

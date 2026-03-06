@@ -195,14 +195,66 @@ export const dashboardAPI = {
   getSalesFunnel: () => api.get('/dashboard/sales-funnel'),
   getCustomerProfitability: () => api.get('/dashboard/customer-profitability'),
   getKPIs: (params?: unknown) => api.get('/dashboard/kpis', { params }),
+  getSalesTeamPerformance: (params?: unknown) => api.get('/dashboard/sales-team-performance', { params }),
 };
 
 // ── Tasks ────────────────────────────────────────────────────
 export const tasksAPI = {
   getAll:    (params?: unknown) => api.get('/tasks', { params }),
+  getOne:    (id: string) => api.get(`/tasks/${id}`),
+  getById:   (id: string) => api.get(`/tasks/${id}`),
   getStats:  ()                 => api.get('/tasks/stats'),
   create:    (data: unknown)    => api.post('/tasks', data),
   update:    (id: string, data: unknown) => api.put(`/tasks/${id}`, data),
   complete:  (id: string, data?: unknown) => api.patch(`/tasks/${id}/complete`, data || {}),
   delete:    (id: string)       => api.delete(`/tasks/${id}`),
+  // Checklist
+  getChecklist:        (taskId: string) => api.get(`/tasks/${taskId}/checklist`),
+  addChecklistItem:    (taskId: string, data: unknown) => api.post(`/tasks/${taskId}/checklist`, data),
+  toggleChecklistItem: (taskId: string, itemId: string, isDone: boolean) =>
+    api.patch(`/tasks/${taskId}/checklist/${itemId}`, { isDone }),
+  deleteChecklistItem: (taskId: string, itemId: string) =>
+    api.delete(`/tasks/${taskId}/checklist/${itemId}`),
+};
+
+// ── Deals ────────────────────────────────────────────────────
+export const dealsAPI = {
+  getAll:     (params?: unknown) => api.get('/deals', { params }),
+  getOne:     (id: string) => api.get(`/deals/${id}`),
+  getPipeline: () => api.get('/deals/pipeline'),
+  create:     (data: unknown) => api.post('/deals', data),
+  update:     (id: string, data: unknown) => api.put(`/deals/${id}`, data),
+  updateStage: (id: string, data: unknown) => api.patch(`/deals/${id}/stage`, data),
+  delete:     (id: string) => api.delete(`/deals/${id}`),
+  getActivities: (id: string) => api.get(`/deals/${id}/activities`),
+  addActivity: (id: string, data: unknown) => api.post(`/deals/${id}/activities`, data),
+};
+
+// ── RFQs ─────────────────────────────────────────────────────
+export const rfqsAPI = {
+  getAll:  (params?: unknown) => api.get('/rfqs', { params }),
+  getOne:  (id: string) => api.get(`/rfqs/${id}`),
+  create:  (data: unknown) => api.post('/rfqs', data),
+  update:  (id: string, data: unknown) => api.put(`/rfqs/${id}`, data),
+};
+
+// ── Quotations ───────────────────────────────────────────────
+export const quotationsAPI = {
+  getAll:  (params?: unknown) => api.get('/quotations', { params }),
+  getOne:  (id: string) => api.get(`/quotations/${id}`),
+  create:  (data: unknown) => api.post('/quotations', data),
+  update:  (id: string, data: unknown) => api.put(`/quotations/${id}`, data),
+  delete:  (id: string) => api.delete(`/quotations/${id}`),
+};
+
+// ── Documents ────────────────────────────────────────────────
+export const documentsAPI = {
+  getAll:    (params?: unknown) => api.get('/documents', { params }),
+  getOne:    (id: string) => api.get(`/documents/${id}`),
+  upload:    (formData: FormData) => api.post('/documents', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  }),
+  createUrl: (data: unknown) => api.post('/documents', data),
+  delete:    (id: string) => api.delete(`/documents/${id}`),
+  download:  (id: string) => api.get(`/documents/${id}/download`, { responseType: 'blob' }),
 };

@@ -7,7 +7,7 @@ import {
   LayoutDashboard, Users, TrendingUp, Package, HeadphonesIcon,
   DollarSign, BarChart2, LogOut, Menu, X, ChevronDown, Bell,
   Settings, Truck, Globe, ShieldCheck, ClipboardList,
-  ChevronRight, ClipboardCheck
+  ChevronRight, ClipboardCheck, Briefcase, FileText, FileCheck, Paperclip
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useTranslation } from '@/lib/i18n';
@@ -67,16 +67,44 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
     {
       href: '/sales',
       label: t('nav.sales'),
-      labelAr: 'المبيعات',
+      labelAr: 'المبيعات (Opportunities)',
       icon: TrendingUp,
       roles: ['Admin', 'Sales'],
+    },
+    {
+      href: '/deals',
+      label: 'Deals Pipeline',
+      labelAr: 'خط الصفقات',
+      icon: Briefcase,
+      roles: ['Admin', 'Sales', 'Operations', 'Finance'],
+    },
+    {
+      href: '/rfqs',
+      label: 'RFQs',
+      labelAr: 'طلبات التسعير',
+      icon: FileText,
+      roles: ['Admin', 'Sales', 'Operations', 'Finance'],
+    },
+    {
+      href: '/quotations',
+      label: 'Quotations',
+      labelAr: 'عروض الأسعار',
+      icon: FileCheck,
+      roles: ['Admin', 'Finance', 'Operations', 'Sales'],
     },
     {
       href: '/tasks',
       label: 'Tasks & Log',
       labelAr: 'سجل المهام',
       icon: ClipboardCheck,
-      roles: ['Admin', 'Sales'],
+      // visible to all roles
+    },
+    {
+      href: '/documents',
+      label: 'Documents',
+      labelAr: 'المستندات',
+      icon: Paperclip,
+      roles: ['Admin', 'Sales', 'Operations', 'Finance'],
     },
     {
       href: '/shipments',

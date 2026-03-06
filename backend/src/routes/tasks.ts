@@ -1,31 +1,25 @@
 import { Router } from 'express';
 import {
-  getTasks,
-  getTaskStats,
-  createTask,
-  updateTask,
-  completeTask,
-  deleteTask,
+  getTasks, getTask, getTaskStats, createTask, updateTask, completeTask, deleteTask,
+  getChecklist, addChecklistItem, toggleChecklistItem, deleteChecklistItem
 } from '../controllers/tasksController';
 import { authenticate } from '../middleware/auth';
 
 const router = Router();
-
-// All task routes require authentication
 router.use(authenticate);
 
-// GET  /tasks         → list tasks (own only, or all for Admin)
-// GET  /tasks/stats   → task statistics
-// POST /tasks         → create a task
 router.get('/stats', getTaskStats);
 router.get('/', getTasks);
 router.post('/', createTask);
-
-// PUT    /tasks/:id          → update a task
-// PATCH  /tasks/:id/complete → mark as complete
-// DELETE /tasks/:id          → delete a task
+router.get('/:id', getTask);
 router.put('/:id', updateTask);
 router.patch('/:id/complete', completeTask);
 router.delete('/:id', deleteTask);
+
+// Checklist
+router.get('/:id/checklist', getChecklist);
+router.post('/:id/checklist', addChecklistItem);
+router.patch('/:taskId/checklist/:itemId', toggleChecklistItem);
+router.delete('/:taskId/checklist/:itemId', deleteChecklistItem);
 
 export default router;
