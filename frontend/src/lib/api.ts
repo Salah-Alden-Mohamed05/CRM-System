@@ -144,6 +144,7 @@ export const salesAPI = {
     api.post(`/sales/opportunities/${id}/activities`, data),
   getLeads: () => api.get('/sales/leads'),
   createLead: (data: unknown) => api.post('/sales/leads', data),
+  updateLead: (id: string, data: unknown) => api.put(`/sales/leads/${id}`, data),
 };
 
 // ── Shipments ────────────────────────────────────────────────

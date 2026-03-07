@@ -235,3 +235,31 @@ export const createLead = async (req: AuthRequest, res: Response): Promise<void>
     res.status(500).json({ success: false, message: 'Failed to create lead' });
   }
 };
+
+export const updateLead = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const { companyName, contactName, email, phone, source, notes, status, assignedTo } = req.body;
+    const result = await query(
+      `UPDATE leads SET
+        company_name = COALESCE($1, company_name),
+        contact_name = COALESCE($2, contact_name),
+        email = COALESCE($3, email),
+        phone = COALESCE($4, phone),
+        source = COALESCE($5, source),
+        notes = COALESCE($6, notes),
+        status = COALESCE($7, status),
+        assigned_to = COALESCE($8, assigned_to),
+        updated_at = NOW()
+       WHERE id = $9 RETURNING *`,
+      [companyName, contactName, email, phone, source, notes, status, assignedTo, id]
+    );
+    if (result.rows.length === 0) {
+      res.status(404).json({ success: false, message: 'Lead not found' });
+      return;
+    }
+    res.json({ success: true, data: result.rows[0] });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Failed to update lead' });
+  }
+};

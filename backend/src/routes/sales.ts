@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import {
   getOpportunities, getOpportunity, createOpportunity, updateOpportunity,
-  updateStage, addActivity, getLeads, createLead
+  updateStage, addActivity, getLeads, createLead, updateLead
 } from '../controllers/salesController';
 import { authenticate, authorize } from '../middleware/auth';
 
@@ -18,5 +18,6 @@ router.post('/opportunities/:id/activities', authorize('Admin','Sales'), addActi
 
 router.get('/leads', getLeads);
 router.post('/leads', authorize('Admin','Sales'), createLead);
+router.put('/leads/:id', authorize('Admin','Sales'), updateLead);
 
 export default router;
