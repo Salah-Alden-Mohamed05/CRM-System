@@ -7,7 +7,8 @@ import {
   LayoutDashboard, Users, TrendingUp, Package, HeadphonesIcon,
   DollarSign, BarChart2, LogOut, Menu, X, ChevronDown, Bell,
   Settings, Truck, Globe, ShieldCheck, ClipboardList,
-  ChevronRight, ClipboardCheck
+  ChevronRight, ClipboardCheck, Briefcase, FileText, FileCheck, Paperclip,
+  UserPlus
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useTranslation } from '@/lib/i18n';
@@ -67,16 +68,44 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
     {
       href: '/sales',
       label: t('nav.sales'),
-      labelAr: 'المبيعات',
+      labelAr: 'المبيعات (Opportunities)',
       icon: TrendingUp,
       roles: ['Admin', 'Sales'],
+    },
+    {
+      href: '/deals',
+      label: 'Deals Pipeline',
+      labelAr: 'خط الصفقات',
+      icon: Briefcase,
+      roles: ['Admin', 'Sales', 'Operations', 'Finance'],
+    },
+    {
+      href: '/rfqs',
+      label: 'RFQs',
+      labelAr: 'طلبات التسعير',
+      icon: FileText,
+      roles: ['Admin', 'Sales', 'Operations', 'Finance'],
+    },
+    {
+      href: '/quotations',
+      label: 'Quotations',
+      labelAr: 'عروض الأسعار',
+      icon: FileCheck,
+      roles: ['Admin', 'Finance', 'Operations', 'Sales'],
     },
     {
       href: '/tasks',
       label: 'Tasks & Log',
       labelAr: 'سجل المهام',
       icon: ClipboardCheck,
-      roles: ['Admin', 'Sales'],
+      // visible to all roles
+    },
+    {
+      href: '/documents',
+      label: 'Documents',
+      labelAr: 'المستندات',
+      icon: Paperclip,
+      roles: ['Admin', 'Sales', 'Operations', 'Finance'],
     },
     {
       href: '/shipments',
@@ -116,6 +145,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
 
   const adminItems = [
     { href: '/admin/users',         label: t('nav.adminUsers'), labelAr: 'إدارة المستخدمين', icon: ShieldCheck },
+    { href: '/admin/leads',         label: 'Lead Database',     labelAr: 'قاعدة بيانات العملاء المحتملين', icon: UserPlus },
     { href: '/admin/activity-logs', label: t('nav.adminLogs'),  labelAr: 'سجل النشاط',        icon: ClipboardList },
   ];
 
@@ -415,6 +445,14 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
                           >
                             <ShieldCheck className="w-4 h-4 text-amber-500" />
                             {isRTL ? 'إدارة المستخدمين' : 'Manage Users'}
+                          </Link>
+                          <Link
+                            href="/admin/leads"
+                            onClick={() => setUserMenuOpen(false)}
+                            className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-amber-50 rounded-lg transition-colors"
+                          >
+                            <UserPlus className="w-4 h-4 text-green-500" />
+                            {isRTL ? 'قاعدة بيانات العملاء المحتملين' : 'Lead Database'}
                           </Link>
                           <Link
                             href="/admin/activity-logs"

@@ -9,6 +9,10 @@ import dotenv from 'dotenv';
 import authRoutes from './routes/auth';
 import customerRoutes from './routes/customers';
 import salesRoutes from './routes/sales';
+import dealsRoutes from './routes/deals';
+import rfqsRoutes from './routes/rfqs';
+import quotationsRoutes from './routes/quotations';
+import documentsRoutes from './routes/documents';
 import shipmentRoutes from './routes/shipments';
 import ticketRoutes from './routes/tickets';
 import financeRoutes from './routes/finance';
@@ -16,6 +20,8 @@ import dashboardRoutes from './routes/dashboard';
 import aiRoutes from './routes/ai';
 import tasksRoutes from './routes/tasks';
 import { errorHandler, notFound } from './middleware/validators';
+import path from 'path';
+import fs from 'fs';
 
 dotenv.config();
 
@@ -23,10 +29,31 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 // Security middleware
-app.use(helmet());
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+  contentSecurityPolicy: false,
+}));
+
+// CORS – allow localhost dev + sandbox public URLs
+const allowedOrigins = [
+  'http://localhost:3000',
+  'http://localhost:3001',
+  process.env.CORS_ORIGIN,
+].filter(Boolean) as string[];
+
 app.use(cors({
-  origin: true,
+  origin: (origin, callback) => {
+    // Allow requests with no origin (mobile apps, curl, server-to-server)
+    if (!origin) return callback(null, true);
+    // Allow any sandbox.novita.ai subdomain
+    if (origin.includes('.sandbox.novita.ai')) return callback(null, true);
+    // Allow explicitly listed origins
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    callback(null, true); // permissive for single-company internal use
+  },
   credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 
 // Rate limiting
@@ -56,12 +83,21 @@ app.get('/health', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/customers', customerRoutes);
 app.use('/api/sales', salesRoutes);
+app.use('/api/deals', dealsRoutes);
+app.use('/api/rfqs', rfqsRoutes);
+app.use('/api/quotations', quotationsRoutes);
+app.use('/api/documents', documentsRoutes);
 app.use('/api/shipments', shipmentRoutes);
 app.use('/api/tickets', ticketRoutes);
 app.use('/api/finance', financeRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/tasks', tasksRoutes);
+
+// Serve uploaded files
+const uploadsDir = path.join(process.cwd(), 'uploads');
+if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+app.use('/uploads', express.static(uploadsDir));
 
 // Error handling
 app.use(notFound);

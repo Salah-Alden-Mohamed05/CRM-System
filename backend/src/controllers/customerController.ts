@@ -1,6 +1,7 @@
 import { Response } from 'express';
 import { query } from '../db/pool';
 import { AuthRequest } from '../middleware/auth';
+import { logActivity, getActivityContext } from '../utils/activityLogger';
 
 export const getCustomers = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
@@ -9,16 +10,16 @@ export const getCustomers = async (req: AuthRequest, res: Response): Promise<voi
     const params: unknown[] = [];
     const conditions: string[] = [];
 
-    // RBAC: non-Admin users see only customers assigned to them or created by them
-    const isAdmin = req.user?.role === 'Admin';
+    // RBAC: Sales sees only customers they own/created; Admin/Finance/Ops see all
+    const isAdmin = ['Admin', 'Finance', 'Operations'].includes(req.user?.role || '');
     if (!isAdmin) {
       params.push(req.user!.id);
-      conditions.push(`(c.assigned_to = $${params.length} OR c.created_by = $${params.length})`);
+      conditions.push(`(c.sales_owner_id = $${params.length} OR c.assigned_to = $${params.length} OR c.created_by = $${params.length})`);
     }
 
     if (search) {
       params.push(`%${search}%`);
-      conditions.push(`(c.company_name ILIKE $${params.length} OR c.industry ILIKE $${params.length})`);
+      conditions.push(`(c.company_name ILIKE $${params.length} OR c.industry ILIKE $${params.length} OR c.email ILIKE $${params.length})`);
     }
     if (status) { params.push(status); conditions.push(`c.status = $${params.length}`); }
     if (country) { params.push(country); conditions.push(`c.country = $${params.length}`); }
@@ -30,13 +31,15 @@ export const getCustomers = async (req: AuthRequest, res: Response): Promise<voi
 
     params.push(Number(limit), offset);
     const result = await query(
-      `SELECT c.*, 
+      `SELECT c.*,
         u.first_name || ' ' || u.last_name as assigned_to_name,
+        so.first_name || ' ' || so.last_name as sales_owner_name,
         (SELECT COUNT(*) FROM shipments WHERE customer_id = c.id) as shipment_count,
-        (SELECT COUNT(*) FROM opportunities WHERE customer_id = c.id) as opportunity_count,
+        (SELECT COUNT(*) FROM deals WHERE customer_id = c.id) as deal_count,
         (SELECT COALESCE(SUM(total_amount),0) FROM invoices WHERE customer_id = c.id) as total_revenue
        FROM customers c
        LEFT JOIN users u ON c.assigned_to = u.id
+       LEFT JOIN users so ON c.sales_owner_id = so.id
        ${where}
        ORDER BY c.created_at DESC
        LIMIT $${params.length - 1} OFFSET $${params.length}`,
@@ -53,29 +56,32 @@ export const getCustomers = async (req: AuthRequest, res: Response): Promise<voi
 export const getCustomer = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const isAdmin = req.user?.role === 'Admin';
+    const isAdmin = ['Admin', 'Finance', 'Operations'].includes(req.user?.role || '');
 
     let sql = `SELECT c.*,
         u.first_name || ' ' || u.last_name as assigned_to_name,
+        so.first_name || ' ' || so.last_name as sales_owner_name,
         (SELECT JSON_AGG(ct.*) FROM contacts ct WHERE ct.customer_id = c.id) as contacts,
+        (SELECT JSON_AGG(d.* ORDER BY d.created_at DESC) FROM deals d WHERE d.customer_id = c.id LIMIT 10) as deals,
         (SELECT JSON_AGG(s.* ORDER BY s.created_at DESC) FROM shipments s WHERE s.customer_id = c.id LIMIT 10) as recent_shipments,
-        (SELECT JSON_AGG(o.* ORDER BY o.created_at DESC) FROM opportunities o WHERE o.customer_id = c.id LIMIT 10) as opportunities,
+        (SELECT JSON_AGG(doc.* ORDER BY doc.created_at DESC) FROM documents doc WHERE doc.customer_id = c.id LIMIT 20) as documents,
         (SELECT COALESCE(SUM(total_amount),0) FROM invoices WHERE customer_id = c.id) as total_revenue,
         (SELECT COALESCE(SUM(outstanding_amount),0) FROM invoices WHERE customer_id = c.id AND status != 'paid') as outstanding_balance
        FROM customers c
        LEFT JOIN users u ON c.assigned_to = u.id
+       LEFT JOIN users so ON c.sales_owner_id = so.id
        WHERE c.id = $1`;
 
     const queryParams: unknown[] = [id];
     if (!isAdmin) {
       queryParams.push(req.user!.id);
-      sql += ` AND (c.assigned_to = $2 OR c.created_by = $2)`;
+      sql += ` AND (c.sales_owner_id = $2 OR c.assigned_to = $2 OR c.created_by = $2)`;
     }
 
     const result = await query(sql, queryParams);
 
     if (result.rows.length === 0) {
-      res.status(404).json({ success: false, message: 'Customer not found' });
+      res.status(404).json({ success: false, message: 'Customer not found or access denied' });
       return;
     }
     res.json({ success: true, data: result.rows[0] });
@@ -86,23 +92,46 @@ export const getCustomer = async (req: AuthRequest, res: Response): Promise<void
 
 export const createCustomer = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { companyName, industry, country, city, address, website, taxId, creditLimit, paymentTerms, status, notes, assignedTo } = req.body;
+    const {
+      companyName, industry, country, city, address, website,
+      taxId, creditLimit, paymentTerms, status, notes, assignedTo,
+      email, phone
+    } = req.body;
 
     if (!companyName) {
       res.status(400).json({ success: false, message: 'Company name is required' });
       return;
     }
 
+    const isAdmin = req.user?.role === 'Admin';
+    const salesOwner = isAdmin ? (assignedTo || req.user!.id) : req.user!.id;
+
     const result = await query(
-      `INSERT INTO customers (company_name, industry, country, city, address, website, tax_id, credit_limit, payment_terms, status, notes, assigned_to, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
-      [companyName, industry, country, city, address, website, taxId, creditLimit || 0, paymentTerms || 30, status || 'prospect', notes, assignedTo || req.user!.id, req.user!.id]
+      `INSERT INTO customers (
+        company_name, industry, country, city, address, website,
+        tax_id, credit_limit, payment_terms, status, notes,
+        email, phone,
+        sales_owner_id, assigned_to, created_by
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
+      [
+        companyName, industry, country, city, address, website,
+        taxId, creditLimit || 0, paymentTerms || 30,
+        status || 'prospect', notes,
+        email || null, phone || null,
+        salesOwner, salesOwner, req.user!.id
+      ]
     );
 
-    await query(
-      `INSERT INTO activity_logs (user_id, action, entity_type, entity_id, new_values) VALUES ($1,'customer_created','customer',$2,$3)`,
-      [req.user!.id, result.rows[0].id, JSON.stringify(req.body)]
-    );
+    const ctx = getActivityContext(req);
+    await logActivity({
+      ...ctx,
+      action: 'customer_created',
+      entityType: 'customer',
+      entityId: result.rows[0].id,
+      entityLabel: companyName,
+      description: `Customer created: ${companyName}`,
+      newValues: { companyName, industry, country, status },
+    });
 
     res.status(201).json({ success: true, data: result.rows[0] });
   } catch (error) {
@@ -113,27 +142,51 @@ export const createCustomer = async (req: AuthRequest, res: Response): Promise<v
 export const updateCustomer = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const { companyName, industry, country, city, address, website, taxId, creditLimit, paymentTerms, status, notes, assignedTo } = req.body;
+    const {
+      companyName, industry, country, city, address, website,
+      taxId, creditLimit, paymentTerms, status, notes, assignedTo,
+      email, phone, salesOwnerId
+    } = req.body;
 
     // Non-admin can only update customers assigned to them
     const isAdmin = req.user?.role === 'Admin';
     if (!isAdmin) {
-      const check = await query('SELECT assigned_to, created_by FROM customers WHERE id=$1', [id]);
+      const check = await query('SELECT sales_owner_id, assigned_to, created_by FROM customers WHERE id=$1', [id]);
       if (check.rows.length === 0) {
         res.status(404).json({ success: false, message: 'Customer not found' });
         return;
       }
-      if (check.rows[0].assigned_to !== req.user!.id && check.rows[0].created_by !== req.user!.id) {
+      const c = check.rows[0];
+      if (c.sales_owner_id !== req.user!.id && c.assigned_to !== req.user!.id && c.created_by !== req.user!.id) {
         res.status(403).json({ success: false, message: 'You can only update your own customers' });
         return;
       }
     }
 
     const result = await query(
-      `UPDATE customers SET company_name=$1, industry=$2, country=$3, city=$4, address=$5, website=$6,
-       tax_id=$7, credit_limit=$8, payment_terms=$9, status=$10, notes=$11, assigned_to=$12, updated_at=NOW()
-       WHERE id=$13 RETURNING *`,
-      [companyName, industry, country, city, address, website, taxId, creditLimit, paymentTerms, status, notes, assignedTo, id]
+      `UPDATE customers SET
+        company_name = COALESCE($1, company_name),
+        industry = COALESCE($2, industry),
+        country = COALESCE($3, country),
+        city = COALESCE($4, city),
+        address = COALESCE($5, address),
+        website = COALESCE($6, website),
+        tax_id = COALESCE($7, tax_id),
+        credit_limit = COALESCE($8, credit_limit),
+        payment_terms = COALESCE($9, payment_terms),
+        status = COALESCE($10, status),
+        notes = COALESCE($11, notes),
+        assigned_to = COALESCE($12, assigned_to),
+        email = COALESCE($13, email),
+        phone = COALESCE($14, phone),
+        sales_owner_id = COALESCE($15, sales_owner_id),
+        updated_at = NOW()
+       WHERE id = $16 RETURNING *`,
+      [companyName, industry, country, city, address, website,
+       taxId, creditLimit, paymentTerms, status, notes,
+       assignedTo, email, phone,
+       isAdmin ? (salesOwnerId || null) : null,
+       id]
     );
 
     if (result.rows.length === 0) {
@@ -141,10 +194,15 @@ export const updateCustomer = async (req: AuthRequest, res: Response): Promise<v
       return;
     }
 
-    await query(
-      `INSERT INTO activity_logs (user_id, action, entity_type, entity_id, new_values) VALUES ($1,'customer_updated','customer',$2,$3)`,
-      [req.user!.id, id, JSON.stringify(req.body)]
-    );
+    const ctx = getActivityContext(req);
+    await logActivity({
+      ...ctx,
+      action: 'customer_updated',
+      entityType: 'customer',
+      entityId: id,
+      entityLabel: result.rows[0].company_name,
+      description: `Customer updated: ${result.rows[0].company_name}`,
+    });
 
     res.json({ success: true, data: result.rows[0] });
   } catch (error) {
@@ -156,21 +214,27 @@ export const deleteCustomer = async (req: AuthRequest, res: Response): Promise<v
   try {
     const { id } = req.params;
 
-    // Only Admin can delete customers
     if (req.user?.role !== 'Admin') {
       res.status(403).json({ success: false, message: 'Only admins can delete customers' });
       return;
     }
 
-    const result = await query('DELETE FROM customers WHERE id=$1 RETURNING id', [id]);
+    const result = await query('DELETE FROM customers WHERE id=$1 RETURNING id, company_name', [id]);
     if (result.rows.length === 0) {
       res.status(404).json({ success: false, message: 'Customer not found' });
       return;
     }
-    await query(
-      `INSERT INTO activity_logs (user_id, action, entity_type, entity_id) VALUES ($1,'customer_deleted','customer',$2)`,
-      [req.user!.id, id]
-    );
+
+    const ctx = getActivityContext(req);
+    await logActivity({
+      ...ctx,
+      action: 'customer_deleted',
+      entityType: 'customer',
+      entityId: id,
+      entityLabel: result.rows[0].company_name,
+      description: `Customer deleted: ${result.rows[0].company_name}`,
+    });
+
     res.json({ success: true, message: 'Customer deleted' });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Failed to delete customer' });

@@ -35,4 +35,7 @@ export function useTranslation() {
   return { t, lang: language, isRTL: language === 'ar', translations };
 }
 
+// Alias for new pages that use useI18n
+export const useI18n = useTranslation;
+
 export { en, ar };
