@@ -572,7 +572,7 @@ export default function SalesDetailPage() {
                 </div>
               )}
               {tasks.map(task => {
-                const isOverdue = task.due_date && new Date(task.due_date as string) < new Date() && task.status !== 'completed';
+                const isOverdue = Boolean(task.due_date && new Date(task.due_date as string) < new Date() && task.status !== 'completed');
                 return (
                   <div key={task.id as string} className={`bg-white rounded-xl border p-4 flex items-start gap-3 shadow-sm ${isOverdue ? 'border-orange-200' : 'border-gray-100'}`}>
                     <button
@@ -592,7 +592,7 @@ export default function SalesDetailPage() {
                       </div>
                       <div className="flex items-center gap-3 mt-1">
                         <span className="text-xs text-gray-400 capitalize">{(task.task_type as string || '').replace(/_/g, ' ')}</span>
-                        {task.due_date && (
+                        {(task.due_date as string | null) && (
                           <span className={`text-xs flex items-center gap-0.5 ${isOverdue ? 'text-red-500' : 'text-gray-400'}`}>
                             <Clock className="w-3 h-3" />
                             {format(new Date(task.due_date as string), 'MMM d')}
@@ -635,7 +635,7 @@ export default function SalesDetailPage() {
                 )}
               </div>
             )}
-            {opp.loss_reason && (
+            {(opp.loss_reason as string | null) && (
               <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
                 <p className="text-sm font-medium text-red-700">Loss Reason</p>
                 <p className="text-sm text-red-600 mt-0.5">{opp.loss_reason as string}</p>

@@ -1,6 +1,7 @@
 import { Response } from 'express';
 import { query } from '../db/pool';
 import { AuthRequest } from '../middleware/auth';
+import { logActivity, getActivityContext } from '../utils/activityLogger';
 
 type AnyRecord = Record<string, any>;
 
@@ -132,7 +133,7 @@ export const createDeal = async (req: AuthRequest, res: Response): Promise<void>
       title, customerId, stage = 'lead', value = 0, currency = 'USD', probability,
       expectedCloseDate, serviceType, originCountry, originPort, destinationCountry,
       destinationPort, cargoType, shippingMode, incoterms, notes, assignedTo,
-      opsAssignedTo, financeAssignedTo
+      opsAssignedTo, financeAssignedTo, leadId
     } = req.body;
 
     if (!title) { res.status(400).json({ success: false, message: 'Deal title is required' }); return; }
@@ -143,13 +144,13 @@ export const createDeal = async (req: AuthRequest, res: Response): Promise<void>
 
     const result = await query(
       `INSERT INTO deals (
-        title, customer_id, stage, value, currency, probability,
+        title, customer_id, lead_id, stage, value, currency, probability,
         expected_close_date, service_type, origin_country, origin_port,
         destination_country, destination_port, cargo_type, shipping_mode,
         incoterms, notes, assigned_to, ops_assigned_to, finance_assigned_to, created_by
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
       RETURNING *`,
-      [title, customerId, stage, value, currency, prob,
+      [title, customerId, leadId || null, stage, value, currency, prob,
        expectedCloseDate || null, serviceType, originCountry, originPort,
        destinationCountry, destinationPort, cargoType, shippingMode,
        incoterms, notes, assignee, opsAssignedTo || null, financeAssignedTo || null, req.user!.id]
@@ -162,12 +163,24 @@ export const createDeal = async (req: AuthRequest, res: Response): Promise<void>
       [result.rows[0].id, req.user!.id, `Deal created at stage: ${stage}`, stage]
     );
 
-    // Log audit
-    await query(
-      `INSERT INTO activity_logs (user_id, action, entity_type, entity_id, metadata)
-       VALUES ($1, 'created', 'deal', $2, $3)`,
-      [req.user!.id, result.rows[0].id, JSON.stringify({ label: title, role: req.user!.role, name: `${req.user!.firstName} ${req.user!.lastName}` })]
-    );
+    // Update customer sales_owner_id if not set
+    if (customerId) {
+      await query(
+        `UPDATE customers SET sales_owner_id = COALESCE(sales_owner_id, $1), updated_at = NOW() WHERE id = $2`,
+        [assignee, customerId]
+      );
+    }
+
+    const ctx = getActivityContext(req);
+    await logActivity({
+      ...ctx,
+      action: 'deal_created',
+      entityType: 'deal',
+      entityId: result.rows[0].id,
+      entityLabel: title,
+      description: `Deal created: ${title} at stage ${stage}`,
+      newValues: { title, customerId, stage, value, assignedTo: assignee },
+    });
 
     res.status(201).json({ success: true, data: result.rows[0], message: 'Deal created successfully' });
   } catch (error) {

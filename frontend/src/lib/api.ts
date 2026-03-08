@@ -142,9 +142,15 @@ export const salesAPI = {
     api.patch(`/sales/opportunities/${id}/stage`, data),
   addActivity: (id: string, data: unknown) =>
     api.post(`/sales/opportunities/${id}/activities`, data),
-  getLeads: () => api.get('/sales/leads'),
+  // Leads
+  getLeads: (params?: unknown) => api.get('/sales/leads', { params }),
+  getLead: (id: string) => api.get(`/sales/leads/${id}`),
   createLead: (data: unknown) => api.post('/sales/leads', data),
   updateLead: (id: string, data: unknown) => api.put(`/sales/leads/${id}`, data),
+  deleteLead: (id: string) => api.delete(`/sales/leads/${id}`),
+  convertLead: (id: string, data: unknown) => api.post(`/sales/leads/${id}/convert`, data),
+  // Personal stats
+  getMyStats: (params?: unknown) => api.get('/sales/my-stats', { params }),
 };
 
 // ── Shipments ────────────────────────────────────────────────

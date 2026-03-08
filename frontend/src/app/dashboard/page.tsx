@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import MainLayout from '@/components/layout/MainLayout';
-import { dashboardAPI } from '@/lib/api';
+import { dashboardAPI, salesAPI } from '@/lib/api';
 import { DashboardStats } from '@/types';
 import { StatCard, Card, Loading, Badge } from '@/components/ui';
 import AIInsightsPanel from '@/components/dashboard/AIInsightsPanel';
@@ -87,13 +87,42 @@ interface SalesPerformance {
   period: number;
 }
 
+interface PersonalStats {
+  deals: {
+    active_deals: number;
+    deals_won: number;
+    deals_lost: number;
+    revenue_won: number;
+    pipeline_weighted: number;
+    pipeline_value: number;
+  };
+  leads: {
+    total_leads: number;
+    new_leads: number;
+    contacted_leads: number;
+    qualified_leads: number;
+    converted_leads: number;
+  };
+  tasks: {
+    pending_tasks: number;
+    in_progress_tasks: number;
+    completed_tasks: number;
+    overdue_tasks: number;
+  };
+  customers: {
+    my_customers: number;
+  };
+  recentDeals: TopDeal[];
+  recentActivities: Array<{ id: string; action: string; description: string; created_at: string }>;
+  period: number;
+}
+
 type Period = '7' | '30' | '90';
 
 export default function DashboardPage() {
   const { user, isAuthenticated, loading: authLoading } = useAuth();
   const router = useRouter();
   const isAdmin = user?.role?.toLowerCase() === 'admin';
-
   const isSales = user?.role?.toLowerCase() === 'sales';
 
   const [stats, setStats] = useState<DashboardStats | null>(null);
@@ -102,6 +131,7 @@ export default function DashboardPage() {
   const [salesFunnel, setSalesFunnel] = useState<unknown[]>([]);
   const [salesPerf, setSalesPerf] = useState<SalesPerformance | null>(null);
   const [myPerf, setMyPerf] = useState<TeamMember | null>(null);
+  const [personalStats, setPersonalStats] = useState<PersonalStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState<Period>('30');
   const [activeTab, setActiveTab] = useState<'overview' | 'team' | 'pipeline'>('overview');
@@ -109,31 +139,49 @@ export default function DashboardPage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const promises: Promise<unknown>[] = [
-        dashboardAPI.getStats(),
-        dashboardAPI.getRevenueChart({ period: 6 }),
-        dashboardAPI.getShipmentChart(),
-        dashboardAPI.getSalesFunnel(),
-        dashboardAPI.getSalesTeamPerformance({ period }),
-      ];
-      const results = await Promise.all(promises) as Array<{ data: { data: unknown } }>;
-      setStats(results[0].data.data as DashboardStats);
-      setRevenueData(results[1].data.data as unknown[]);
-      setShipmentData(results[2].data.data as { byStatus: unknown[]; byMode: unknown[] });
-      setSalesFunnel(results[3].data.data as unknown[]);
-      if (results[4]) {
-        const perfData = results[4].data.data as SalesPerformance;
-        setSalesPerf(perfData);
-        // Find current user's stats
-        const me = perfData?.teamStats?.find((m: TeamMember) => m.id === user?.id);
-        if (me) setMyPerf(me);
+      if (isAdmin) {
+        // Admin gets full dashboard
+        const promises: Promise<unknown>[] = [
+          dashboardAPI.getStats(),
+          dashboardAPI.getRevenueChart({ period: 6 }),
+          dashboardAPI.getShipmentChart(),
+          dashboardAPI.getSalesFunnel(),
+          dashboardAPI.getSalesTeamPerformance({ period }),
+        ];
+        const results = await Promise.all(promises) as Array<{ data: { data: unknown } }>;
+        setStats(results[0].data.data as DashboardStats);
+        setRevenueData(results[1].data.data as unknown[]);
+        setShipmentData(results[2].data.data as { byStatus: unknown[]; byMode: unknown[] });
+        setSalesFunnel(results[3].data.data as unknown[]);
+        if (results[4]) {
+          const perfData = results[4].data.data as SalesPerformance;
+          setSalesPerf(perfData);
+        }
+      } else if (isSales) {
+        // Sales rep gets personal stats only
+        const [statsRes, personalRes] = await Promise.all([
+          dashboardAPI.getStats(),
+          salesAPI.getMyStats({ period }),
+        ]);
+        setStats(statsRes.data.data as DashboardStats);
+        setPersonalStats(personalRes.data.data as PersonalStats);
+      } else {
+        // Operations/Finance/Support - get stats
+        const [statsRes, revenueRes, shipmentRes] = await Promise.all([
+          dashboardAPI.getStats(),
+          dashboardAPI.getRevenueChart({ period: 6 }),
+          dashboardAPI.getShipmentChart(),
+        ]);
+        setStats(statsRes.data.data as DashboardStats);
+        setRevenueData(revenueRes.data.data as unknown[]);
+        setShipmentData(shipmentRes.data.data as { byStatus: unknown[]; byMode: unknown[] });
       }
     } catch (err) {
       console.error('Dashboard fetch error:', err);
     } finally {
       setLoading(false);
     }
-  }, [isAdmin, period, user?.id]);
+  }, [isAdmin, isSales, period, user?.id]);
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) { router.replace('/login'); return; }
@@ -202,6 +250,7 @@ export default function DashboardPage() {
         {/* ── KPI Cards ── */}
         {stats && (
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* All roles see Shipments */}
             <StatCard
               title="Active Shipments"
               value={stats.shipments.active}
@@ -209,27 +258,60 @@ export default function DashboardPage() {
               subtitle={`${stats.shipments.delayed} delayed`}
               color="blue"
             />
-            <StatCard
-              title="Total Revenue"
-              value={fmt(stats.revenue.total_invoiced)}
-              icon={<DollarSign className="w-6 h-6" />}
-              subtitle={`${fmt(stats.revenue.total_outstanding)} outstanding`}
-              color="green"
-            />
-            <StatCard
-              title="Open Tickets"
-              value={stats.tickets.open_count}
-              icon={<Ticket className="w-6 h-6" />}
-              subtitle={`${stats.tickets.critical} critical`}
-              color="red"
-            />
-            <StatCard
-              title="Pipeline Value"
-              value={fmt(stats.sales.weighted_pipeline)}
-              icon={<TrendingUp className="w-6 h-6" />}
-              subtitle={`${stats.sales.active} active deals`}
-              color="purple"
-            />
+            {/* Admin/Finance see Revenue */}
+            {!isSales ? (
+              <StatCard
+                title="Total Revenue"
+                value={fmt(stats.revenue.total_invoiced)}
+                icon={<DollarSign className="w-6 h-6" />}
+                subtitle={`${fmt(stats.revenue.total_outstanding)} outstanding`}
+                color="green"
+              />
+            ) : (
+              <StatCard
+                title="My Active Deals"
+                value={personalStats?.deals.active_deals ?? '—'}
+                icon={<Briefcase className="w-6 h-6" />}
+                subtitle={`${personalStats?.deals.deals_won ?? 0} won this period`}
+                color="green"
+              />
+            )}
+            {/* Non-sales see Tickets, sales see My Pipeline */}
+            {!isSales ? (
+              <StatCard
+                title="Open Tickets"
+                value={stats.tickets.open_count}
+                icon={<Ticket className="w-6 h-6" />}
+                subtitle={`${stats.tickets.critical} critical`}
+                color="red"
+              />
+            ) : (
+              <StatCard
+                title="My Pipeline"
+                value={fmt(Number(personalStats?.deals.pipeline_value ?? 0))}
+                icon={<TrendingUp className="w-6 h-6" />}
+                subtitle={`Weighted: ${fmt(Number(personalStats?.deals.pipeline_weighted ?? 0))}`}
+                color="purple"
+              />
+            )}
+            {/* Admin/Ops see Pipeline Value, sales see My Leads */}
+            {!isSales ? (
+              <StatCard
+                title="Pipeline Value"
+                value={fmt(stats.sales.weighted_pipeline)}
+                icon={<TrendingUp className="w-6 h-6" />}
+                subtitle={`${stats.sales.active} active deals`}
+                color="purple"
+              />
+            ) : (
+              <StatCard
+                title="My Leads"
+                value={personalStats?.leads.total_leads ?? '—'}
+                icon={<Users className="w-6 h-6" />}
+                subtitle={`${personalStats?.leads.new_leads ?? 0} new, ${personalStats?.leads.qualified_leads ?? 0} qualified`}
+                color="blue"
+              />
+            )}
           </div>
         )}
 
@@ -258,7 +340,9 @@ export default function DashboardPage() {
         ═══════════════════════════════════════════ */}
         {(!isAdmin || activeTab === 'overview') && (
           <>
-            {/* Charts Row */}
+            {/* Charts Row - only for non-sales (or admin) */}
+            {!isSales && (
+            <>
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               <AIInsightsPanel />
               <Card className="col-span-2">
@@ -391,15 +475,21 @@ export default function DashboardPage() {
                 </div>
               </Card>
             </div>
+            </> )} {/* End !isSales charts */}
 
-            {/* Quick Links */}
+            {/* Quick Links - role-based */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {[
+              {(isSales ? [
+                { label: 'My Leads', href: '/sales/my-leads', color: 'bg-blue-600 text-white', icon: <TrendingUp className="w-5 h-5" /> },
+                { label: 'My Pipeline', href: '/sales', color: 'bg-emerald-600 text-white', icon: <Briefcase className="w-5 h-5" /> },
+                { label: 'My Tasks', href: '/tasks', color: 'bg-purple-600 text-white', icon: <CheckSquare className="w-5 h-5" /> },
+                { label: 'My Customers', href: '/customers', color: 'bg-orange-500 text-white', icon: <Users className="w-5 h-5" /> },
+              ] : [
                 { label: 'New Shipment', href: '/shipments', color: 'bg-blue-600 text-white', icon: <Package className="w-5 h-5" /> },
                 { label: 'My Deals', href: '/sales', color: 'bg-emerald-600 text-white', icon: <Briefcase className="w-5 h-5" /> },
                 { label: 'New Ticket', href: '/tickets', color: 'bg-orange-500 text-white', icon: <Ticket className="w-5 h-5" /> },
                 { label: 'My Tasks', href: '/tasks', color: 'bg-purple-600 text-white', icon: <CheckSquare className="w-5 h-5" /> },
-              ].map(({ label, href, color, icon }) => (
+              ]).map(({ label, href, color, icon }) => (
                 <Link key={href} href={href} className={`${color} rounded-xl p-4 flex items-center justify-between group hover:opacity-90 transition-opacity`}>
                   <div className="flex items-center gap-3">
                     {icon}
@@ -411,7 +501,7 @@ export default function DashboardPage() {
             </div>
 
             {/* My Performance (for non-admin sales reps) */}
-            {!isAdmin && myPerf && (
+            {isSales && personalStats && (
               <div className="bg-gradient-to-br from-blue-600 to-blue-700 rounded-2xl p-6 text-white">
                 <div className="flex items-center justify-between mb-4">
                   <div>
@@ -422,6 +512,102 @@ export default function DashboardPage() {
                     {(['7', '30', '90'] as Period[]).map(p => (
                       <button key={p} onClick={() => setPeriod(p)} className={`px-3 py-1.5 rounded-md font-medium transition-all ${period === p ? 'bg-white text-blue-600 shadow' : 'text-blue-200 hover:text-white'}`}>{p}d</button>
                     ))}
+                  </div>
+                </div>
+
+                {/* KPI Cards */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                  <div className="bg-white/10 rounded-xl p-3">
+                    <div className="text-2xl font-bold">{personalStats.deals.active_deals}</div>
+                    <div className="text-blue-200 text-xs mt-1">Active Deals</div>
+                  </div>
+                  <div className="bg-white/10 rounded-xl p-3">
+                    <div className="text-2xl font-bold">{personalStats.deals.deals_won}</div>
+                    <div className="text-blue-200 text-xs mt-1">Deals Won</div>
+                  </div>
+                  <div className="bg-white/10 rounded-xl p-3">
+                    <div className="text-2xl font-bold">{fmt(Number(personalStats.deals.revenue_won))}</div>
+                    <div className="text-blue-200 text-xs mt-1">Revenue Won</div>
+                  </div>
+                  <div className="bg-white/10 rounded-xl p-3">
+                    <div className="text-2xl font-bold">{personalStats.tasks.completed_tasks}/{personalStats.tasks.completed_tasks + personalStats.tasks.pending_tasks + personalStats.tasks.in_progress_tasks}</div>
+                    <div className="text-blue-200 text-xs mt-1">Tasks Done</div>
+                  </div>
+                </div>
+
+                {/* Leads & Customers Row */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                  <div className="bg-white/10 rounded-xl p-3">
+                    <div className="text-xl font-bold">{personalStats.leads.total_leads}</div>
+                    <div className="text-blue-200 text-xs mt-1">My Leads</div>
+                  </div>
+                  <div className="bg-white/10 rounded-xl p-3">
+                    <div className="text-xl font-bold">{personalStats.leads.new_leads}</div>
+                    <div className="text-blue-200 text-xs mt-1">New Leads</div>
+                  </div>
+                  <div className="bg-white/10 rounded-xl p-3">
+                    <div className="text-xl font-bold">{personalStats.customers.my_customers}</div>
+                    <div className="text-blue-200 text-xs mt-1">My Customers</div>
+                  </div>
+                  <div className="bg-white/10 rounded-xl p-3">
+                    <div className="text-xl font-bold text-orange-300">{personalStats.tasks.overdue_tasks}</div>
+                    <div className="text-blue-200 text-xs mt-1">Overdue Tasks</div>
+                  </div>
+                </div>
+
+                {/* Progress bars */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <div className="flex justify-between text-xs text-blue-200 mb-1">
+                      <span>Win Rate</span>
+                      <span>{pct(personalStats.deals.deals_won, personalStats.deals.deals_won + personalStats.deals.deals_lost || 1)}%</span>
+                    </div>
+                    <div className="h-2 bg-blue-800/60 rounded-full overflow-hidden">
+                      <div className="h-full bg-white rounded-full transition-all" style={{ width: `${pct(personalStats.deals.deals_won, personalStats.deals.deals_won + personalStats.deals.deals_lost || 1)}%` }} />
+                    </div>
+                  </div>
+                  <div>
+                    <div className="flex justify-between text-xs text-blue-200 mb-1">
+                      <span>Task Completion</span>
+                      <span>{pct(personalStats.tasks.completed_tasks, (personalStats.tasks.completed_tasks + personalStats.tasks.pending_tasks + personalStats.tasks.in_progress_tasks) || 1)}%</span>
+                    </div>
+                    <div className="h-2 bg-blue-800/60 rounded-full overflow-hidden">
+                      <div className="h-full bg-green-400 rounded-full transition-all" style={{ width: `${pct(personalStats.tasks.completed_tasks, (personalStats.tasks.completed_tasks + personalStats.tasks.pending_tasks + personalStats.tasks.in_progress_tasks) || 1)}%` }} />
+                    </div>
+                  </div>
+                </div>
+
+                {personalStats.tasks.overdue_tasks > 0 && (
+                  <div className="mt-3 bg-red-500/20 border border-red-400/30 rounded-lg px-3 py-2 flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 text-red-300" />
+                    <span className="text-sm text-red-200">{personalStats.tasks.overdue_tasks} overdue task{personalStats.tasks.overdue_tasks > 1 ? 's' : ''} — </span>
+                    <Link href="/tasks" className="text-white underline text-sm font-medium">View Now</Link>
+                  </div>
+                )}
+
+                <div className="mt-3 flex gap-2 flex-wrap">
+                  <Link href="/sales/my-leads" className="flex-1 min-w-0 bg-white/10 hover:bg-white/20 rounded-lg px-4 py-2 text-sm font-medium text-center transition-colors flex items-center justify-center gap-2">
+                    <TrendingUp className="w-4 h-4" />My Leads
+                  </Link>
+                  <Link href="/sales" className="flex-1 min-w-0 bg-white/10 hover:bg-white/20 rounded-lg px-4 py-2 text-sm font-medium text-center transition-colors flex items-center justify-center gap-2">
+                    <Briefcase className="w-4 h-4" />My Pipeline
+                  </Link>
+                  <Link href="/tasks" className="flex-1 min-w-0 bg-white/10 hover:bg-white/20 rounded-lg px-4 py-2 text-sm font-medium text-center transition-colors flex items-center justify-center gap-2">
+                    <CheckSquare className="w-4 h-4" />My Tasks
+                  </Link>
+                  <Link href="/customers" className="flex-1 min-w-0 bg-white/10 hover:bg-white/20 rounded-lg px-4 py-2 text-sm font-medium text-center transition-colors flex items-center justify-center gap-2">
+                    <Users className="w-4 h-4" />My Customers
+                  </Link>
+                </div>
+              </div>
+            )}
+            {/* Legacy myPerf fallback for non-sales non-admin users */}
+            {!isAdmin && !isSales && myPerf && (
+              <div className="bg-gradient-to-br from-blue-600 to-blue-700 rounded-2xl p-6 text-white">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <h2 className="text-lg font-semibold">My Performance</h2>
+                    <p className="text-blue-200 text-sm">Last {period} days</p>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -441,44 +627,6 @@ export default function DashboardPage() {
                     <div className="text-2xl font-bold">{myPerf.tasks_completed}/{myPerf.tasks_created}</div>
                     <div className="text-blue-200 text-xs mt-1">Tasks Done</div>
                   </div>
-                </div>
-                <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div>
-                    <div className="flex justify-between text-xs text-blue-200 mb-1">
-                      <span>Win Rate</span>
-                      <span>{pct(myPerf.deals_won, myPerf.deals_won + myPerf.deals_lost || 1)}%</span>
-                    </div>
-                    <div className="h-2 bg-blue-800/60 rounded-full overflow-hidden">
-                      <div className="h-full bg-white rounded-full transition-all" style={{ width: `${pct(myPerf.deals_won, myPerf.deals_won + myPerf.deals_lost || 1)}%` }} />
-                    </div>
-                  </div>
-                  <div>
-                    <div className="flex justify-between text-xs text-blue-200 mb-1">
-                      <span>Task Completion</span>
-                      <span>{pct(myPerf.tasks_completed, myPerf.tasks_created || 1)}%</span>
-                    </div>
-                    <div className="h-2 bg-blue-800/60 rounded-full overflow-hidden">
-                      <div className="h-full bg-green-400 rounded-full transition-all" style={{ width: `${pct(myPerf.tasks_completed, myPerf.tasks_created || 1)}%` }} />
-                    </div>
-                  </div>
-                </div>
-                {myPerf.tasks_overdue > 0 && (
-                  <div className="mt-3 bg-red-500/20 border border-red-400/30 rounded-lg px-3 py-2 flex items-center gap-2">
-                    <AlertTriangle className="w-4 h-4 text-red-300" />
-                    <span className="text-sm text-red-200">{myPerf.tasks_overdue} overdue task{myPerf.tasks_overdue > 1 ? 's' : ''} — </span>
-                    <Link href="/tasks" className="text-white underline text-sm font-medium">View Now</Link>
-                  </div>
-                )}
-                <div className="mt-3 flex gap-2">
-                  <Link href="/sales" className="flex-1 bg-white/10 hover:bg-white/20 rounded-lg px-4 py-2 text-sm font-medium text-center transition-colors flex items-center justify-center gap-2">
-                    <Briefcase className="w-4 h-4" />My Pipeline
-                  </Link>
-                  <Link href="/tasks" className="flex-1 bg-white/10 hover:bg-white/20 rounded-lg px-4 py-2 text-sm font-medium text-center transition-colors flex items-center justify-center gap-2">
-                    <CheckSquare className="w-4 h-4" />My Tasks
-                  </Link>
-                  <Link href="/customers" className="flex-1 bg-white/10 hover:bg-white/20 rounded-lg px-4 py-2 text-sm font-medium text-center transition-colors flex items-center justify-center gap-2">
-                    <Users className="w-4 h-4" />My Customers
-                  </Link>
                 </div>
               </div>
             )}

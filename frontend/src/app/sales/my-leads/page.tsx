@@ -128,7 +128,7 @@ function LeadFormModal({
             {isEdit && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-                <select className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500" value={form.status} onChange={e => setForm({ ...form, status: e.target.value })}>
+                <select className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500" value={form.status} onChange={e => setForm({ ...form, status: e.target.value as 'new' | 'contacted' | 'qualified' | 'disqualified' })}>
                   {Object.entries(STATUS_CONFIG).map(([key, cfg]) => (
                     <option key={key} value={key}>{cfg.label}</option>
                   ))}
@@ -340,15 +340,26 @@ export default function MyLeadsPage() {
 
   const handleConvert = async (dealData: Record<string, string | number>) => {
     if (!convertingLead) return;
-    // Create deal linked to lead
-    await salesAPI.createOpportunity({
-      ...dealData,
-      notes: `Converted from lead: ${convertingLead.company_name}`,
-      assignedTo: user?.id,
-    });
-    setConvertingLead(null);
-    addToast(`Lead converted to deal!`);
-    router.push('/sales');
+    try {
+      // Use the proper convertLead endpoint that auto-links lead, customer, and deal
+      await salesAPI.convertLead(convertingLead.id, {
+        dealTitle: dealData.title || `Deal - ${convertingLead.company_name}`,
+        dealValue: dealData.value || 0,
+        expectedCloseDate: dealData.expectedCloseDate || null,
+        shippingMode: dealData.shippingMode || null,
+        originCountry: dealData.originCountry || null,
+        destinationCountry: dealData.destinationCountry || null,
+        serviceType: dealData.serviceType || null,
+        notes: dealData.notes || `Converted from lead: ${convertingLead.company_name}`,
+      });
+      setConvertingLead(null);
+      addToast(`Lead converted to deal successfully!`);
+      fetchData();
+      setTimeout(() => router.push('/sales'), 1500);
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { message?: string } } };
+      addToast(e?.response?.data?.message || 'Failed to convert lead', 'error');
+    }
   };
 
   const filteredLeads = leads.filter(l => {

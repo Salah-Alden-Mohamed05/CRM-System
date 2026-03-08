@@ -7,7 +7,8 @@ import {
   LayoutDashboard, Users, TrendingUp, Package, HeadphonesIcon,
   DollarSign, BarChart2, LogOut, Menu, X, ChevronDown, Bell,
   Settings, Truck, Globe, ShieldCheck, ClipboardList,
-  ChevronRight, ClipboardCheck, Briefcase, FileText, FileCheck, Paperclip
+  ChevronRight, ClipboardCheck, Briefcase, FileText, FileCheck, Paperclip,
+  UserPlus
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useTranslation } from '@/lib/i18n';
@@ -144,6 +145,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
 
   const adminItems = [
     { href: '/admin/users',         label: t('nav.adminUsers'), labelAr: 'إدارة المستخدمين', icon: ShieldCheck },
+    { href: '/admin/leads',         label: 'Lead Database',     labelAr: 'قاعدة بيانات العملاء المحتملين', icon: UserPlus },
     { href: '/admin/activity-logs', label: t('nav.adminLogs'),  labelAr: 'سجل النشاط',        icon: ClipboardList },
   ];
 
@@ -443,6 +445,14 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
                           >
                             <ShieldCheck className="w-4 h-4 text-amber-500" />
                             {isRTL ? 'إدارة المستخدمين' : 'Manage Users'}
+                          </Link>
+                          <Link
+                            href="/admin/leads"
+                            onClick={() => setUserMenuOpen(false)}
+                            className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-amber-50 rounded-lg transition-colors"
+                          >
+                            <UserPlus className="w-4 h-4 text-green-500" />
+                            {isRTL ? 'قاعدة بيانات العملاء المحتملين' : 'Lead Database'}
                           </Link>
                           <Link
                             href="/admin/activity-logs"

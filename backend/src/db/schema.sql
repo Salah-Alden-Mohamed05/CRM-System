@@ -605,6 +605,12 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS password_changed_at TIMESTAMP WITH TI
 ALTER TABLE users ADD COLUMN IF NOT EXISTS email_lower VARCHAR(255);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS email VARCHAR(255);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS phone VARCHAR(50);
+-- Sales ownership: track which sales rep owns a customer
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS sales_owner_id UUID REFERENCES users(id) ON DELETE SET NULL;
+-- Lead linkage in deals
+ALTER TABLE deals ADD COLUMN IF NOT EXISTS lead_id UUID REFERENCES leads(id) ON DELETE SET NULL;
+-- Activity log description field
+ALTER TABLE activity_logs ADD COLUMN IF NOT EXISTS description TEXT;
 ALTER TABLE shipments ADD COLUMN IF NOT EXISTS opportunity_id UUID;
 ALTER TABLE shipments ADD COLUMN IF NOT EXISTS weight_kg DECIMAL(10,2);
 ALTER TABLE shipments ADD COLUMN IF NOT EXISTS volume_cbm DECIMAL(10,2);
@@ -715,6 +721,11 @@ CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 CREATE INDEX IF NOT EXISTS idx_users_role_id ON users(role_id);
 CREATE INDEX IF NOT EXISTS idx_customers_status ON customers(status);
 CREATE INDEX IF NOT EXISTS idx_customers_assigned_to ON customers(assigned_to);
+CREATE INDEX IF NOT EXISTS idx_customers_sales_owner ON customers(sales_owner_id);
+CREATE INDEX IF NOT EXISTS idx_deals_lead_id ON deals(lead_id);
+CREATE INDEX IF NOT EXISTS idx_leads_assigned_to ON leads(assigned_to);
+CREATE INDEX IF NOT EXISTS idx_leads_created_by ON leads(created_by);
+CREATE INDEX IF NOT EXISTS idx_leads_status ON leads(status);
 CREATE INDEX IF NOT EXISTS idx_deals_stage ON deals(stage);
 CREATE INDEX IF NOT EXISTS idx_deals_customer_id ON deals(customer_id);
 CREATE INDEX IF NOT EXISTS idx_deals_assigned_to ON deals(assigned_to);
