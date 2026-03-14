@@ -7,15 +7,18 @@ import MainLayout from '@/components/layout/MainLayout';
 import { financeAPI, customersAPI, shipmentsAPI } from '@/lib/api';
 import { Invoice, Customer, Shipment } from '@/types';
 import { Card, Badge, Button, Input, Select, Modal, Loading, EmptyState } from '@/components/ui';
-import { DollarSign, Plus, Search, TrendingUp, AlertCircle, CheckCircle, Clock, ArrowRight } from 'lucide-react';
+import {
+  DollarSign, Plus, Search, TrendingUp, AlertCircle,
+  CheckCircle, Clock, ArrowRight, ChevronDown, ChevronUp, X
+} from 'lucide-react';
 
-const STATUS_CONFIG: Record<string, { badge: 'default' | 'info' | 'warning' | 'success' | 'danger' | 'purple'; label: string }> = {
-  draft: { badge: 'default', label: 'Draft' },
-  sent: { badge: 'info', label: 'Sent' },
-  partial: { badge: 'warning', label: 'Partial' },
-  paid: { badge: 'success', label: 'Paid' },
-  overdue: { badge: 'danger', label: 'Overdue' },
-  cancelled: { badge: 'default', label: 'Cancelled' },
+const STATUS_CONFIG: Record<string, { badge: 'default' | 'info' | 'warning' | 'success' | 'danger' | 'purple'; label: string; color: string }> = {
+  draft:     { badge: 'default',  label: 'Draft',      color: 'bg-gray-100 text-gray-600' },
+  sent:      { badge: 'info',     label: 'Sent',       color: 'bg-blue-100 text-blue-700' },
+  partial:   { badge: 'warning',  label: 'Partial',    color: 'bg-yellow-100 text-yellow-700' },
+  paid:      { badge: 'success',  label: 'Paid',       color: 'bg-green-100 text-green-700' },
+  overdue:   { badge: 'danger',   label: 'Overdue',    color: 'bg-red-100 text-red-700' },
+  cancelled: { badge: 'default',  label: 'Cancelled',  color: 'bg-gray-100 text-gray-400' },
 };
 
 interface InvoiceItem { description: string; quantity: number; unitPrice: string; amount: number }
@@ -34,6 +37,7 @@ export default function FinancePage() {
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
   const [invoiceItems, setInvoiceItems] = useState<InvoiceItem[]>([
     { description: '', quantity: 1, unitPrice: '', amount: 0 }
   ]);
@@ -102,6 +106,14 @@ export default function FinancePage() {
     setInvoiceItems(items);
   };
 
+  const toggleCard = (id: string) => {
+    setExpandedCards(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
   const stats = {
     totalInvoiced: invoices.reduce((s, i) => s + Number(i.total_amount), 0),
     totalPaid: invoices.reduce((s, i) => s + Number(i.paid_amount), 0),
@@ -115,63 +127,80 @@ export default function FinancePage() {
   );
 
   const fmt = (v: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(v);
+  const fmtShort = (v: number) => v >= 1_000_000 ? `$${(v/1_000_000).toFixed(1)}M` : v >= 1000 ? `$${(v/1000).toFixed(0)}k` : `$${v.toFixed(0)}`;
 
   return (
     <MainLayout>
-      <div className="p-6 space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
+      <div className="p-4 md:p-6 space-y-4 md:space-y-6">
+
+        {/* ── Header ── */}
+        <div className="flex items-center justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Finance</h1>
-            <p className="text-gray-500 text-sm mt-1">Invoices & Payments Management</p>
+            <h1 className="text-xl md:text-2xl font-bold text-gray-900">Finance</h1>
+            <p className="text-gray-500 text-xs md:text-sm mt-0.5">Invoices &amp; Payments Management</p>
           </div>
-          <Button onClick={() => setShowInvoiceModal(true)} icon={<Plus className="w-4 h-4" />}>New Invoice</Button>
+          <Button
+            onClick={() => setShowInvoiceModal(true)}
+            icon={<Plus className="w-4 h-4" />}
+            className="shrink-0"
+          >
+            <span className="hidden sm:inline">New Invoice</span>
+            <span className="sm:hidden">New</span>
+          </Button>
         </div>
 
-        {/* Finance Stats */}
-        <div className="grid grid-cols-4 gap-4">
-          <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-blue-500 rounded-lg text-white"><TrendingUp className="w-5 h-5" /></div>
-              <div>
-                <p className="text-xs text-blue-600 font-medium">Total Invoiced</p>
-                <p className="font-bold text-blue-900">{fmt(stats.totalInvoiced)}</p>
+        {/* ── Stats — 2×2 on mobile, 4×1 on desktop ── */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200 !p-3 md:!p-4">
+            <div className="flex items-center gap-2 md:gap-3">
+              <div className="p-1.5 md:p-2 bg-blue-500 rounded-lg text-white flex-shrink-0">
+                <TrendingUp className="w-4 h-4 md:w-5 md:h-5" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs text-blue-600 font-medium truncate">Total Invoiced</p>
+                <p className="font-bold text-blue-900 text-sm md:text-base">{fmtShort(stats.totalInvoiced)}</p>
               </div>
             </div>
           </Card>
-          <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-green-500 rounded-lg text-white"><CheckCircle className="w-5 h-5" /></div>
-              <div>
-                <p className="text-xs text-green-600 font-medium">Collected</p>
-                <p className="font-bold text-green-900">{fmt(stats.totalPaid)}</p>
+          <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200 !p-3 md:!p-4">
+            <div className="flex items-center gap-2 md:gap-3">
+              <div className="p-1.5 md:p-2 bg-green-500 rounded-lg text-white flex-shrink-0">
+                <CheckCircle className="w-4 h-4 md:w-5 md:h-5" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs text-green-600 font-medium truncate">Collected</p>
+                <p className="font-bold text-green-900 text-sm md:text-base">{fmtShort(stats.totalPaid)}</p>
               </div>
             </div>
           </Card>
-          <Card className="bg-gradient-to-br from-yellow-50 to-yellow-100 border-yellow-200">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-yellow-500 rounded-lg text-white"><Clock className="w-5 h-5" /></div>
-              <div>
-                <p className="text-xs text-yellow-600 font-medium">Outstanding</p>
-                <p className="font-bold text-yellow-900">{fmt(stats.outstanding)}</p>
+          <Card className="bg-gradient-to-br from-yellow-50 to-yellow-100 border-yellow-200 !p-3 md:!p-4">
+            <div className="flex items-center gap-2 md:gap-3">
+              <div className="p-1.5 md:p-2 bg-yellow-500 rounded-lg text-white flex-shrink-0">
+                <Clock className="w-4 h-4 md:w-5 md:h-5" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs text-yellow-600 font-medium truncate">Outstanding</p>
+                <p className="font-bold text-yellow-900 text-sm md:text-base">{fmtShort(stats.outstanding)}</p>
               </div>
             </div>
           </Card>
-          <Card className="bg-gradient-to-br from-red-50 to-red-100 border-red-200">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-red-500 rounded-lg text-white"><AlertCircle className="w-5 h-5" /></div>
-              <div>
-                <p className="text-xs text-red-600 font-medium">Overdue</p>
-                <p className="font-bold text-red-900">{stats.overdue} invoices</p>
+          <Card className="bg-gradient-to-br from-red-50 to-red-100 border-red-200 !p-3 md:!p-4">
+            <div className="flex items-center gap-2 md:gap-3">
+              <div className="p-1.5 md:p-2 bg-red-500 rounded-lg text-white flex-shrink-0">
+                <AlertCircle className="w-4 h-4 md:w-5 md:h-5" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs text-red-600 font-medium truncate">Overdue</p>
+                <p className="font-bold text-red-900 text-sm md:text-base">{stats.overdue} inv.</p>
               </div>
             </div>
           </Card>
         </div>
 
-        {/* Filters */}
+        {/* ── Filters ── */}
         <Card>
-          <div className="flex flex-wrap gap-3">
-            <div className="flex-1 min-w-48">
+          <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+            <div className="flex-1">
               <Input
                 placeholder="Search invoices..."
                 value={search}
@@ -186,66 +215,231 @@ export default function FinancePage() {
                 { value: '', label: 'All Status' },
                 ...Object.entries(STATUS_CONFIG).map(([k, v]) => ({ value: k, label: v.label })),
               ]}
-              className="w-40"
+              className="sm:w-40"
             />
           </div>
         </Card>
 
-        {/* Invoices Table */}
+        {/* ── Invoices ── */}
         {loading ? <Loading /> : filtered.length === 0 ? (
           <EmptyState
             icon={<DollarSign className="w-8 h-8" />}
             title="No invoices found"
             description="Create your first invoice"
-            action={<Button onClick={() => setShowInvoiceModal(true)} icon={<Plus className="w-4 h-4" />}>Create Invoice</Button>}
+            action={
+              <Button onClick={() => setShowInvoiceModal(true)} icon={<Plus className="w-4 h-4" />}>
+                Create Invoice
+              </Button>
+            }
           />
         ) : (
-          <Card padding={false}>
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-100 bg-gray-50">
-                  {['Invoice #', 'Customer', 'Shipment', 'Issue Date', 'Due Date', 'Total', 'Paid', 'Outstanding', 'Status', ''].map(h => (
-                    <th key={h} className="text-left py-3 px-4 font-medium text-gray-500 text-xs">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((inv) => (
-                  <tr key={inv.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
-                    <td className="py-3 px-4 font-mono text-xs font-semibold text-gray-700">{inv.invoice_number}</td>
-                    <td className="py-3 px-4 text-gray-700 font-medium">{inv.customer_name}</td>
-                    <td className="py-3 px-4 text-gray-500 text-xs">{inv.shipment_reference || '-'}</td>
-                    <td className="py-3 px-4 text-gray-500 text-xs">{new Date(inv.issue_date).toLocaleDateString()}</td>
-                    <td className="py-3 px-4 text-gray-500 text-xs">{new Date(inv.due_date).toLocaleDateString()}</td>
-                    <td className="py-3 px-4 font-semibold text-gray-900">{fmt(Number(inv.total_amount))}</td>
-                    <td className="py-3 px-4 text-green-600 font-medium">{fmt(Number(inv.paid_amount))}</td>
-                    <td className="py-3 px-4 font-semibold text-orange-600">
-                      {Number(inv.outstanding_amount) > 0 ? fmt(Number(inv.outstanding_amount)) : '-'}
-                    </td>
-                    <td className="py-3 px-4">
-                      <Badge variant={STATUS_CONFIG[inv.status]?.badge || 'default'}>{STATUS_CONFIG[inv.status]?.label || inv.status}</Badge>
-                    </td>
-                    <td className="py-3 px-4">
-                      <div className="flex gap-2">
-                        {['sent', 'partial', 'overdue'].includes(inv.status) && (
-                          <Button size="sm" variant="outline" onClick={() => openPayment(inv)}>
-                            Record Payment
-                          </Button>
-                        )}
-                        <ArrowRight className="w-4 h-4 text-gray-400 cursor-pointer" onClick={() => setSelectedInvoice(inv)} />
-                      </div>
-                    </td>
+          <>
+            {/* Desktop Table */}
+            <Card padding={false} className="hidden md:block overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-100 bg-gray-50">
+                    {['Invoice #', 'Customer', 'Shipment', 'Issue Date', 'Due Date', 'Total', 'Paid', 'Outstanding', 'Status', ''].map(h => (
+                      <th key={h} className="text-left py-3 px-4 font-medium text-gray-500 text-xs whitespace-nowrap">{h}</th>
+                    ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </Card>
+                </thead>
+                <tbody>
+                  {filtered.map((inv) => (
+                    <tr key={inv.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
+                      <td className="py-3 px-4 font-mono text-xs font-semibold text-gray-700 whitespace-nowrap">{inv.invoice_number}</td>
+                      <td className="py-3 px-4 text-gray-700 font-medium max-w-[160px] truncate">{inv.customer_name}</td>
+                      <td className="py-3 px-4 text-gray-500 text-xs">{inv.shipment_reference || '—'}</td>
+                      <td className="py-3 px-4 text-gray-500 text-xs whitespace-nowrap">{new Date(inv.issue_date).toLocaleDateString()}</td>
+                      <td className="py-3 px-4 text-gray-500 text-xs whitespace-nowrap">{new Date(inv.due_date).toLocaleDateString()}</td>
+                      <td className="py-3 px-4 font-semibold text-gray-900 whitespace-nowrap">{fmt(Number(inv.total_amount))}</td>
+                      <td className="py-3 px-4 text-green-600 font-medium whitespace-nowrap">{fmt(Number(inv.paid_amount))}</td>
+                      <td className="py-3 px-4 font-semibold text-orange-600 whitespace-nowrap">
+                        {Number(inv.outstanding_amount) > 0 ? fmt(Number(inv.outstanding_amount)) : '—'}
+                      </td>
+                      <td className="py-3 px-4">
+                        <Badge variant={STATUS_CONFIG[inv.status]?.badge || 'default'}>
+                          {STATUS_CONFIG[inv.status]?.label || inv.status}
+                        </Badge>
+                      </td>
+                      <td className="py-3 px-4">
+                        <div className="flex gap-2 items-center">
+                          {['sent', 'partial', 'overdue'].includes(inv.status) && (
+                            <Button size="sm" variant="outline" onClick={() => openPayment(inv)}>
+                              Record
+                            </Button>
+                          )}
+                          <button
+                            className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
+                            onClick={() => setSelectedInvoice(inv)}
+                            title="View details"
+                          >
+                            <ArrowRight className="w-4 h-4 text-gray-400" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </Card>
+
+            {/* Mobile Card List */}
+            <div className="md:hidden space-y-3">
+              {filtered.map((inv) => {
+                const isExpanded = expandedCards.has(inv.id);
+                const cfg = STATUS_CONFIG[inv.status];
+                return (
+                  <div key={inv.id} className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                    {/* Card Header — always visible */}
+                    <div
+                      className="flex items-center gap-3 px-4 py-3 cursor-pointer active:bg-gray-50"
+                      onClick={() => toggleCard(inv.id)}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+                          <span className="font-mono text-xs font-bold text-gray-700">{inv.invoice_number}</span>
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${cfg?.color || 'bg-gray-100 text-gray-600'}`}>
+                            {cfg?.label || inv.status}
+                          </span>
+                        </div>
+                        <p className="text-sm font-semibold text-gray-900 truncate">{inv.customer_name || '—'}</p>
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          Due: {new Date(inv.due_date).toLocaleDateString()} ·{' '}
+                          <span className="font-semibold text-gray-700">{fmt(Number(inv.total_amount))}</span>
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        {Number(inv.outstanding_amount) > 0 && (
+                          <span className="text-xs font-bold text-orange-600 whitespace-nowrap">
+                            {fmtShort(Number(inv.outstanding_amount))} due
+                          </span>
+                        )}
+                        {isExpanded
+                          ? <ChevronUp className="w-4 h-4 text-gray-400" />
+                          : <ChevronDown className="w-4 h-4 text-gray-400" />
+                        }
+                      </div>
+                    </div>
+
+                    {/* Expanded Details */}
+                    {isExpanded && (
+                      <div className="border-t border-gray-100 px-4 py-3 space-y-3 bg-gray-50">
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <p className="text-xs text-gray-500">Issue Date</p>
+                            <p className="text-sm font-medium text-gray-800">{new Date(inv.issue_date).toLocaleDateString()}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-gray-500">Due Date</p>
+                            <p className="text-sm font-medium text-gray-800">{new Date(inv.due_date).toLocaleDateString()}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-gray-500">Total Amount</p>
+                            <p className="text-sm font-bold text-gray-900">{fmt(Number(inv.total_amount))}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-gray-500">Paid</p>
+                            <p className="text-sm font-bold text-green-600">{fmt(Number(inv.paid_amount))}</p>
+                          </div>
+                          {Number(inv.outstanding_amount) > 0 && (
+                            <div>
+                              <p className="text-xs text-gray-500">Outstanding</p>
+                              <p className="text-sm font-bold text-orange-600">{fmt(Number(inv.outstanding_amount))}</p>
+                            </div>
+                          )}
+                          {inv.shipment_reference && (
+                            <div>
+                              <p className="text-xs text-gray-500">Shipment</p>
+                              <p className="text-sm font-medium text-gray-700">{inv.shipment_reference}</p>
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex gap-2 pt-1">
+                          {['sent', 'partial', 'overdue'].includes(inv.status) && (
+                            <button
+                              onClick={() => openPayment(inv)}
+                              className="flex-1 py-2 bg-blue-600 text-white text-sm font-semibold rounded-xl hover:bg-blue-700 transition-colors"
+                            >
+                              Record Payment
+                            </button>
+                          )}
+                          <button
+                            onClick={() => setSelectedInvoice(inv)}
+                            className="flex-1 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-xl hover:bg-gray-100 transition-colors"
+                          >
+                            View Details
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </>
         )}
 
-        {/* New Invoice Modal */}
+        {/* ── Invoice Detail Drawer (mobile & desktop) ── */}
+        {selectedInvoice && (
+          <Modal
+            isOpen={!!selectedInvoice}
+            onClose={() => setSelectedInvoice(null)}
+            title={`Invoice ${selectedInvoice.invoice_number}`}
+            size="md"
+          >
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="p-3 bg-gray-50 rounded-xl">
+                  <p className="text-xs text-gray-500">Customer</p>
+                  <p className="font-semibold text-sm mt-0.5">{selectedInvoice.customer_name || '—'}</p>
+                </div>
+                <div className="p-3 bg-gray-50 rounded-xl">
+                  <p className="text-xs text-gray-500">Status</p>
+                  <div className="mt-0.5">
+                    <Badge variant={STATUS_CONFIG[selectedInvoice.status]?.badge || 'default'}>
+                      {STATUS_CONFIG[selectedInvoice.status]?.label || selectedInvoice.status}
+                    </Badge>
+                  </div>
+                </div>
+                <div className="p-3 bg-gray-50 rounded-xl">
+                  <p className="text-xs text-gray-500">Issue Date</p>
+                  <p className="font-semibold text-sm mt-0.5">{new Date(selectedInvoice.issue_date).toLocaleDateString()}</p>
+                </div>
+                <div className="p-3 bg-gray-50 rounded-xl">
+                  <p className="text-xs text-gray-500">Due Date</p>
+                  <p className="font-semibold text-sm mt-0.5">{new Date(selectedInvoice.due_date).toLocaleDateString()}</p>
+                </div>
+              </div>
+              <div className="p-4 bg-blue-50 rounded-xl space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">Total Amount</span>
+                  <span className="font-bold text-gray-900">{fmt(Number(selectedInvoice.total_amount))}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">Paid</span>
+                  <span className="font-bold text-green-600">{fmt(Number(selectedInvoice.paid_amount))}</span>
+                </div>
+                {Number(selectedInvoice.outstanding_amount) > 0 && (
+                  <div className="flex justify-between text-sm border-t border-blue-100 pt-2">
+                    <span className="text-gray-600">Outstanding</span>
+                    <span className="font-bold text-orange-600">{fmt(Number(selectedInvoice.outstanding_amount))}</span>
+                  </div>
+                )}
+              </div>
+              {['sent', 'partial', 'overdue'].includes(selectedInvoice.status) && (
+                <Button className="w-full" onClick={() => { setSelectedInvoice(null); openPayment(selectedInvoice); }}>
+                  Record Payment
+                </Button>
+              )}
+            </div>
+          </Modal>
+        )}
+
+        {/* ── New Invoice Modal ── */}
         <Modal isOpen={showInvoiceModal} onClose={() => setShowInvoiceModal(false)} title="Create Invoice" size="xl">
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Select
                 label="Customer *"
                 value={invoiceForm.customerId}
@@ -304,55 +498,79 @@ export default function FinancePage() {
               </div>
               <div className="space-y-2">
                 {invoiceItems.map((item, i) => (
-                  <div key={i} className="grid grid-cols-12 gap-2 items-end">
-                    <div className="col-span-5">
+                  <div key={i} className="flex flex-col sm:grid sm:grid-cols-12 gap-2 p-3 bg-gray-50 rounded-xl sm:p-0 sm:bg-transparent sm:items-end">
+                    {/* Description */}
+                    <div className="sm:col-span-5">
+                      <label className="text-xs text-gray-500 sm:hidden mb-1 block">Description</label>
                       <input
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                         placeholder="Description"
                         value={item.description}
                         onChange={(e) => updateItem(i, 'description', e.target.value)}
                       />
                     </div>
-                    <div className="col-span-2">
-                      <input
-                        type="number"
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="Qty"
-                        value={item.quantity}
-                        onChange={(e) => updateItem(i, 'quantity', e.target.value)}
-                      />
+                    {/* Qty & Price row on mobile */}
+                    <div className="flex gap-2 sm:contents">
+                      <div className="flex-1 sm:col-span-2">
+                        <label className="text-xs text-gray-500 sm:hidden mb-1 block">Qty</label>
+                        <input
+                          type="number"
+                          className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="Qty"
+                          value={item.quantity}
+                          onChange={(e) => updateItem(i, 'quantity', e.target.value)}
+                        />
+                      </div>
+                      <div className="flex-1 sm:col-span-3">
+                        <label className="text-xs text-gray-500 sm:hidden mb-1 block">Unit Price</label>
+                        <input
+                          type="number"
+                          className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="Unit Price"
+                          value={item.unitPrice}
+                          onChange={(e) => updateItem(i, 'unitPrice', e.target.value)}
+                        />
+                      </div>
                     </div>
-                    <div className="col-span-3">
-                      <input
-                        type="number"
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="Unit Price"
-                        value={item.unitPrice}
-                        onChange={(e) => updateItem(i, 'unitPrice', e.target.value)}
-                      />
-                    </div>
-                    <div className="col-span-2 text-right">
+                    <div className="sm:col-span-2 flex items-center justify-between">
                       <span className="text-sm font-semibold text-gray-700">
                         ${(Number(item.quantity) * Number(item.unitPrice || 0)).toLocaleString()}
                       </span>
+                      {invoiceItems.length > 1 && (
+                        <button
+                          onClick={() => setInvoiceItems(invoiceItems.filter((_, idx) => idx !== i))}
+                          className="p-1 hover:bg-red-50 rounded-lg text-red-400 hover:text-red-600 ml-2"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))}
               </div>
-              <div className="mt-3 p-3 bg-gray-50 rounded-lg text-sm flex justify-end gap-6">
-                <span className="text-gray-500">Subtotal: <strong>${invoiceItems.reduce((s, i) => s + i.amount, 0).toLocaleString()}</strong></span>
-                <span className="text-gray-500">Tax ({invoiceForm.taxRate}%): <strong>${(invoiceItems.reduce((s, i) => s + i.amount, 0) * Number(invoiceForm.taxRate) / 100).toLocaleString()}</strong></span>
-                <span className="font-bold">Total: ${(invoiceItems.reduce((s, i) => s + i.amount, 0) * (1 + Number(invoiceForm.taxRate) / 100)).toLocaleString()}</span>
+              <div className="mt-3 p-3 bg-gray-50 rounded-xl text-sm space-y-1">
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Subtotal</span>
+                  <strong>${invoiceItems.reduce((s, i) => s + i.amount, 0).toLocaleString()}</strong>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Tax ({invoiceForm.taxRate}%)</span>
+                  <strong>${(invoiceItems.reduce((s, i) => s + i.amount, 0) * Number(invoiceForm.taxRate) / 100).toLocaleString()}</strong>
+                </div>
+                <div className="flex justify-between border-t border-gray-200 pt-1">
+                  <span className="font-bold">Total</span>
+                  <strong>${(invoiceItems.reduce((s, i) => s + i.amount, 0) * (1 + Number(invoiceForm.taxRate) / 100)).toLocaleString()}</strong>
+                </div>
               </div>
             </div>
           </div>
-          <div className="flex justify-end gap-3 mt-6">
+          <div className="flex flex-col-reverse sm:flex-row justify-end gap-3 mt-6">
             <Button variant="outline" onClick={() => setShowInvoiceModal(false)}>Cancel</Button>
             <Button onClick={handleCreateInvoice} loading={saving}>Create Invoice</Button>
           </div>
         </Modal>
 
-        {/* Payment Modal */}
+        {/* ── Payment Modal ── */}
         <Modal isOpen={showPaymentModal} onClose={() => setShowPaymentModal(false)} title="Record Payment" size="md">
           <div className="space-y-4">
             <Input
@@ -388,18 +606,19 @@ export default function FinancePage() {
             <div>
               <label className="text-sm font-medium text-gray-700 block mb-1">Notes</label>
               <textarea
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
                 rows={2}
                 value={paymentForm.notes}
                 onChange={(e) => setPaymentForm({ ...paymentForm, notes: e.target.value })}
               />
             </div>
           </div>
-          <div className="flex justify-end gap-3 mt-6">
+          <div className="flex flex-col-reverse sm:flex-row justify-end gap-3 mt-6">
             <Button variant="outline" onClick={() => setShowPaymentModal(false)}>Cancel</Button>
             <Button onClick={handleRecordPayment} loading={saving}>Record Payment</Button>
           </div>
         </Modal>
+
       </div>
     </MainLayout>
   );

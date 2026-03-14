@@ -9,6 +9,7 @@ import dotenv from 'dotenv';
 import authRoutes from './routes/auth';
 import customerRoutes from './routes/customers';
 import salesRoutes from './routes/sales';
+import leadImportRoutes from './routes/leadImport';
 import dealsRoutes from './routes/deals';
 import rfqsRoutes from './routes/rfqs';
 import quotationsRoutes from './routes/quotations';
@@ -19,6 +20,7 @@ import financeRoutes from './routes/finance';
 import dashboardRoutes from './routes/dashboard';
 import aiRoutes from './routes/ai';
 import tasksRoutes from './routes/tasks';
+import leadsRoutes from './routes/leads';
 import { errorHandler, notFound } from './middleware/validators';
 import path from 'path';
 import fs from 'fs';
@@ -93,6 +95,8 @@ app.use('/api/finance', financeRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/tasks', tasksRoutes);
+app.use('/api/leads', leadsRoutes);
+app.use('/api/admin/leads', leadImportRoutes);
 
 // Serve uploaded files
 const uploadsDir = path.join(process.cwd(), 'uploads');

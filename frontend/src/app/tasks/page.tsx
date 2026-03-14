@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import MainLayout from '@/components/layout/MainLayout';
 import { useAuth } from '@/contexts/AuthContext';
-import { useI18n } from '@/lib/i18n';
+import { useI18n, useTranslation } from '@/lib/i18n';
 import { tasksAPI, customersAPI, salesAPI } from '@/lib/api';
 import {
   Plus, Search, Filter, CheckCircle2, Clock, XCircle, PlayCircle,
@@ -10,7 +10,7 @@ import {
   ClipboardList, RefreshCw, AlertCircle, Phone, Mail, Users,
   Calendar, Tag, Building2, Link, FileText, ChevronRight, X,
   BarChart2, Target, Briefcase, StickyNote, ListChecks, Info,
-  Zap, TrendingUp
+  Zap, TrendingUp, RotateCcw
 } from 'lucide-react';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -18,7 +18,7 @@ interface ChecklistItem { id: string; title: string; is_done: boolean; sort_orde
 interface Task {
   id: string; title: string; task_type: string; description?: string;
   required_actions?: string; notes?: string; outcome?: string;
-  status: 'pending' | 'in_progress' | 'completed' | 'cancelled';
+  status: 'pending' | 'in_progress' | 'completed' | 'cancelled' | 'blocked';
   priority: 'low' | 'medium' | 'high' | 'urgent';
   due_date?: string; completed_at?: string; created_at: string;
   user_name?: string; assigned_to_name?: string;
@@ -30,7 +30,7 @@ interface Task {
 }
 interface TaskStats {
   pending: number; in_progress: number; completed: number;
-  cancelled: number; overdue: number; total: number;
+  cancelled: number; blocked: number; overdue: number; total: number;
 }
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -38,6 +38,7 @@ const STATUS_CONFIG = {
   pending:     { label:'Pending',     labelAr:'في الانتظار', color:'bg-yellow-100 text-yellow-700 border-yellow-200', icon: Clock },
   in_progress: { label:'In Progress', labelAr:'جاري',       color:'bg-blue-100 text-blue-700 border-blue-200',       icon: PlayCircle },
   completed:   { label:'Completed',   labelAr:'مكتملة',     color:'bg-green-100 text-green-700 border-green-200',    icon: CheckCircle2 },
+  blocked:     { label:'Blocked',     labelAr:'محظور',      color:'bg-red-100 text-red-700 border-red-200',          icon: AlertCircle },
   cancelled:   { label:'Cancelled',   labelAr:'ملغاة',      color:'bg-gray-100 text-gray-600 border-gray-200',       icon: XCircle },
 } as const;
 
@@ -607,7 +608,7 @@ function TaskCard({ task, isRTL, onOpen, onEdit, onDelete }: {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function TasksPage() {
   const { user } = useAuth();
-  const { isRTL } = useI18n();
+  const { isRTL, t } = useTranslation();
   const isAdmin = user?.role === 'Admin';
 
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -625,12 +626,33 @@ export default function TasksPage() {
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [viewingTask, setViewingTask] = useState<Task | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
+  const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' | 'undo'; onUndo?: () => void } | null>(null);
+  const undoHistoryRef = React.useRef<Array<{ label: string; restore: () => Promise<void> }>>([]);
+  const toastTimer = React.useRef<NodeJS.Timeout | null>(null);
 
-  const showToast = (msg: string, type: 'success' | 'error' = 'success') => {
-    setToast({ msg, type });
-    setTimeout(() => setToast(null), 3500);
+  const showToast = (msg: string, type: 'success' | 'error' | 'undo' = 'success', onUndo?: () => void) => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    setToast({ msg, type, onUndo });
+    toastTimer.current = setTimeout(() => setToast(null), 4500);
   };
+
+  const pushUndo = (label: string, restore: () => Promise<void>) => {
+    undoHistoryRef.current = [{ label, restore }, ...undoHistoryRef.current].slice(0, 10);
+  };
+
+  const undoLast = React.useCallback(async () => {
+    if (undoHistoryRef.current.length === 0) return;
+    const [entry, ...rest] = undoHistoryRef.current;
+    undoHistoryRef.current = rest;
+    setToast(null);
+    try {
+      await entry.restore();
+      // Refresh by dispatching a custom refresh event (decoupled from fetchData)
+      window.dispatchEvent(new CustomEvent('tasks-refresh'));
+      showToast(`Undone: ${entry.label}`);
+    } catch { showToast('Undo failed', 'error'); }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -659,6 +681,12 @@ export default function TasksPage() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
+  useEffect(() => {
+    const handler = () => fetchData();
+    window.addEventListener('tasks-refresh', handler);
+    return () => window.removeEventListener('tasks-refresh', handler);
+  }, [fetchData]);
+
   const handleCreate = async (data: any) => {
     try {
       await tasksAPI.create(data);
@@ -670,20 +698,41 @@ export default function TasksPage() {
 
   const handleUpdate = async (data: any) => {
     if (!editingTask) return;
+    const prevData = { status: editingTask.status, priority: editingTask.priority, title: editingTask.title };
+    const taskId = editingTask.id;
     try {
-      await tasksAPI.update(editingTask.id, data);
+      await tasksAPI.update(taskId, data);
       await fetchData();
       setEditingTask(null);
-      showToast('Task updated!');
+      pushUndo(`Update "${editingTask.title}"`, async () => {
+        await tasksAPI.update(taskId, prevData);
+      });
+      showToast('Task updated!', 'undo', undoLast);
     } catch { showToast('Failed to update task', 'error'); }
   };
 
   const handleDelete = async (id: string) => {
+    // Save task data before deletion for potential undo
+    const taskToDelete = tasks.find(t => t.id === id);
     try {
       await tasksAPI.delete(id);
       await fetchData();
       setDeletingId(null);
-      showToast('Task deleted');
+      if (taskToDelete) {
+        pushUndo(`Delete "${taskToDelete.title}"`, async () => {
+          await tasksAPI.create({
+            title: taskToDelete.title,
+            task_type: taskToDelete.task_type,
+            description: taskToDelete.description,
+            status: taskToDelete.status,
+            priority: taskToDelete.priority,
+            due_date: taskToDelete.due_date,
+          });
+        });
+        showToast('Task deleted', 'undo', undoLast);
+      } else {
+        showToast('Task deleted');
+      }
     } catch { showToast('Failed to delete task', 'error'); }
   };
 
@@ -708,27 +757,32 @@ export default function TasksPage() {
     return true;
   });
 
-  const grouped: Record<string, Task[]> = { in_progress: [], pending: [], completed: [], cancelled: [] };
-  filtered.forEach(t => { if (grouped[t.status]) grouped[t.status].push(t); });
+  const grouped: Record<string, Task[]> = { in_progress: [], pending: [], blocked: [], completed: [], cancelled: [] };
+  filtered.forEach(t => { if (grouped[t.status]) grouped[t.status].push(t); else grouped['pending'].push(t); });
 
   return (
     <MainLayout>
-      <div className="p-6 max-w-7xl mx-auto space-y-6">
+      <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-4 sm:space-y-6">
         {/* Page Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">{isRTL ? 'إدارة المهام' : 'Task Management'}</h1>
+            <h1 className="text-xl sm:text-2xl font-bold text-gray-900">{t('tasks.title')}</h1>
             <p className="text-sm text-gray-500 mt-0.5">
-              {isRTL ? 'تتبع مهامك ومتابعة التقدم' : 'Track your tasks, subtasks, and progress'}
+              {t('common.total')}: {filtered.length}
             </p>
           </div>
-          <button
-            onClick={() => setShowCreateModal(true)}
-            className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 shadow-sm"
-          >
-            <Plus className="w-4 h-4" />
-            {isRTL ? 'مهمة جديدة' : 'New Task'}
+          <div className="flex items-center gap-2">
+            <button onClick={fetchData} className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors" title={t('common.refresh')}>
+              <RefreshCw className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 shadow-sm"
+            >
+              <Plus className="w-4 h-4" />
+            {t('tasks.newTask')}
           </button>
+          </div>
         </div>
 
         {/* Stats */}
@@ -738,9 +792,9 @@ export default function TasksPage() {
               { label:'Total',       labelAr:'الكل',         val: stats.total,       color:'text-gray-700',  bg:'bg-gray-50',    icon: ClipboardList },
               { label:'Pending',     labelAr:'في الانتظار',  val: stats.pending,     color:'text-yellow-700',bg:'bg-yellow-50',  icon: Clock },
               { label:'In Progress', labelAr:'جاري',         val: stats.in_progress, color:'text-blue-700',  bg:'bg-blue-50',    icon: PlayCircle },
+              { label:'Blocked',     labelAr:'محظور',        val: stats.blocked || 0,color:'text-red-700',   bg:'bg-red-50',     icon: AlertCircle },
               { label:'Completed',   labelAr:'مكتملة',       val: stats.completed,   color:'text-green-700', bg:'bg-green-50',   icon: CheckCircle2 },
-              { label:'Overdue',     labelAr:'متأخرة',       val: stats.overdue,     color:'text-red-700',   bg:'bg-red-50',     icon: AlertCircle },
-              { label:'Cancelled',   labelAr:'ملغاة',        val: stats.cancelled,   color:'text-gray-500',  bg:'bg-gray-50',    icon: XCircle },
+              { label:'Overdue',     labelAr:'متأخرة',       val: stats.overdue,     color:'text-orange-700',bg:'bg-orange-50',  icon: AlertCircle },
             ].map(s => (
               <div key={s.label} className={`${s.bg} rounded-xl p-3 border border-white shadow-sm`}>
                 <div className="flex items-center justify-between mb-1">
@@ -821,7 +875,7 @@ export default function TasksPage() {
           </div>
         ) : (
           <div className="space-y-6">
-            {(['in_progress', 'pending', 'completed', 'cancelled'] as const).map(statusGroup => {
+            {(['in_progress', 'pending', 'blocked', 'completed', 'cancelled'] as const).map(statusGroup => {
               const group = grouped[statusGroup];
               if (group.length === 0) return null;
               const cfg = STATUS_CONFIG[statusGroup];
@@ -879,9 +933,20 @@ export default function TasksPage() {
         )}
 
         {toast && (
-          <div className={`fixed bottom-4 right-4 flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg text-sm font-medium text-white z-50 ${toast.type === 'success' ? 'bg-green-600' : 'bg-red-600'}`}>
-            {toast.type === 'success' ? <CheckCircle2 className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
-            {toast.msg}
+          <div className={`fixed bottom-4 right-4 flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg text-sm font-medium text-white z-50 max-w-xs ${
+            toast.type === 'error' ? 'bg-red-600' : toast.type === 'undo' ? 'bg-gray-800' : 'bg-green-600'
+          }`}>
+            {toast.type === 'error' ? <XCircle className="w-4 h-4 flex-shrink-0" /> : <CheckCircle2 className="w-4 h-4 flex-shrink-0" />}
+            <span className="flex-1">{toast.msg}</span>
+            {toast.type === 'undo' && toast.onUndo && (
+              <button
+                onClick={() => { toast.onUndo?.(); setToast(null); }}
+                className="flex items-center gap-1 text-xs font-bold text-orange-300 hover:text-orange-200 border-l border-white/20 pl-3 ml-1 whitespace-nowrap"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                {isRTL ? 'تراجع' : 'Undo'}
+              </button>
+            )}
           </div>
         )}
       </div>

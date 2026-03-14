@@ -9,6 +9,9 @@
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
     "migrate": "node dist/db/migrate.js",
     "seed": "node dist/db/seed.js",
+    "clean-seed": "npx ts-node src/db/clean-seed.ts --clean --seed",
+    "seed-test": "npx ts-node src/db/clean-seed.ts --seed",
+    "clean-data": "npx ts-node src/db/clean-seed.ts --clean",
     "setup": "npm run build && npm run migrate",
     "test": "jest --testTimeout=30000 --forceExit",
     "test:watch": "jest --watch --testTimeout=30000"
@@ -38,7 +41,7 @@
     }
   },
   "dependencies": {
-    "@types/multer": "^2.0.0",
+    "@types/multer": "^2.1.0",
     "bcryptjs": "^2.4.3",
     "compression": "^1.7.4",
     "cors": "^2.8.5",
@@ -52,7 +55,8 @@
     "multer": "^2.1.1",
     "pg": "^8.11.3",
     "uuid": "^9.0.0",
-    "winston": "^3.11.0"
+    "winston": "^3.11.0",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
