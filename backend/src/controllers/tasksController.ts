@@ -137,6 +137,7 @@ export const getTaskStats = async (req: AuthRequest, res: Response): Promise<voi
         COUNT(*) FILTER (WHERE t.status = 'in_progress') AS in_progress,
         COUNT(*) FILTER (WHERE t.status = 'completed')   AS completed,
         COUNT(*) FILTER (WHERE t.status = 'cancelled')   AS cancelled,
+        COUNT(*) FILTER (WHERE t.status = 'blocked')     AS blocked,
         COUNT(*) FILTER (WHERE t.due_date < NOW() AND t.status NOT IN ('completed','cancelled')) AS overdue,
         COUNT(*) AS total
       FROM tasks t ${userFilter}

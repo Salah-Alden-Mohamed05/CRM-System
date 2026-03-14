@@ -2,6 +2,9 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Google Fonts (Arabic + Latin) ──────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;800&family=Inter:wght@300;400;500;600;700&display=swap');
+
 :root {
   --background: #ffffff;
   --foreground: #171717;
@@ -14,14 +17,190 @@
   }
 }
 
+/* ── Base font settings ──────────────────────────────────────── */
 body {
   color: var(--foreground);
   background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: 'Inter', Arial, Helvetica, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
+/* Arabic font override */
+:lang(ar) body,
+[dir='rtl'] body,
+[dir='rtl'] {
+  font-family: 'Cairo', 'Inter', Arial, Helvetica, sans-serif;
+}
+
+/* ── RTL utilities ───────────────────────────────────────────── */
+[dir='rtl'] .rtl\:rotate-180 {
+  transform: rotate(180deg);
+}
+
+/* Mirror chevrons in RTL */
+[dir='rtl'] .lucide-chevron-right {
+  transform: scaleX(-1);
+}
+[dir='rtl'] .lucide-chevron-left {
+  transform: scaleX(-1);
+}
+[dir='rtl'] .lucide-arrow-left {
+  transform: scaleX(-1);
+}
+[dir='rtl'] .lucide-arrow-right {
+  transform: scaleX(-1);
+}
+
+/* ── Text wrap utilities ─────────────────────────────────────── */
 @layer utilities {
   .text-balance {
     text-wrap: balance;
+  }
+
+  /* Prevent text overflow in card titles */
+  .card-title {
+    @apply text-sm font-semibold text-gray-700 leading-snug break-words min-w-0;
+  }
+
+  /* Truncate with tooltip wrapper */
+  .truncate-tooltip {
+    @apply truncate;
+  }
+
+  /* Responsive table wrapper */
+  .table-scroll {
+    @apply overflow-x-auto -mx-4 sm:mx-0;
+  }
+
+  /* Mobile-friendly touch target */
+  .touch-target {
+    @apply min-h-[44px] min-w-[44px];
+  }
+
+  /* KPI card number - always LTR for numbers even in RTL mode */
+  .kpi-number {
+    direction: ltr;
+    unicode-bidi: isolate;
+  }
+}
+
+/* ── Mobile responsive table ─────────────────────────────────── */
+@media (max-width: 640px) {
+  .responsive-table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    white-space: nowrap;
+  }
+
+  .responsive-table th,
+  .responsive-table td {
+    white-space: nowrap;
+  }
+}
+
+/* ── Scrollbar styling ───────────────────────────────────────── */
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: #475569 #1e293b;
+}
+
+.scrollbar-thin::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: #1e293b;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: #475569;
+  border-radius: 2px;
+}
+
+/* ── Kanban horizontal scroll ────────────────────────────────── */
+.kanban-scroll {
+  display: flex;
+  gap: 1rem;
+  overflow-x: auto;
+  padding-bottom: 1rem;
+  -webkit-overflow-scrolling: touch;
+}
+
+.kanban-scroll::-webkit-scrollbar {
+  height: 6px;
+}
+
+.kanban-scroll::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 3px;
+}
+
+.kanban-scroll::-webkit-scrollbar-thumb {
+  background: #94a3b8;
+  border-radius: 3px;
+}
+
+/* ── Form improvements ────────────────────────────────────────── */
+input, select, textarea {
+  font-family: inherit;
+}
+
+/* ── Animation ───────────────────────────────────────────────── */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.15s ease-out;
+}
+
+/* ── RTL text alignment helpers ─────────────────────────────── */
+[dir='rtl'] .text-start { text-align: right; }
+[dir='rtl'] .text-end { text-align: left; }
+
+/* Number and currency always LTR regardless of page direction */
+.kpi-number,
+[dir='rtl'] .kpi-number,
+[dir='rtl'] td.text-end {
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+
+/* RTL arrow fix: ArrowRight should become ArrowLeft in RTL */
+[dir='rtl'] .lucide-arrow-right {
+  transform: scaleX(-1);
+}
+
+/* RTL: flip horizontal-scrolling elements */
+[dir='rtl'] .kanban-scroll {
+  direction: rtl;
+}
+[dir='rtl'] .kanban-scroll > * {
+  direction: ltr;
+}
+
+/* Sidebar RTL: ensure shadow is on correct side */
+[dir='rtl'] aside {
+  border-right: none;
+  border-left: 1px solid rgba(100, 116, 139, 0.2);
+}
+
+/* Mobile: stack flex items vertically on small screens */
+@media (max-width: 480px) {
+  .xs\:flex-col {
+    flex-direction: column;
+  }
+}
+
+@media print {
+  aside, header, .no-print {
+    display: none !important;
+  }
+  main {
+    overflow: visible !important;
   }
 }
