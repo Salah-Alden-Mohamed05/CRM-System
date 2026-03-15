@@ -13,6 +13,25 @@ async function migrate() {
     await client.query(sql);
     console.log('✅ Schema applied successfully');
 
+    // Run incremental migration files in order
+    const migrationsDir = path.join(__dirname, 'migrations');
+    if (fs.existsSync(migrationsDir)) {
+      const migrationFiles = fs.readdirSync(migrationsDir)
+        .filter(f => f.endsWith('.sql'))
+        .sort();
+      for (const file of migrationFiles) {
+        console.log(`  🔄 Running migration: ${file}`);
+        const migSql = fs.readFileSync(path.join(migrationsDir, file), 'utf-8');
+        try {
+          await client.query(migSql);
+          console.log(`  ✅ ${file} applied`);
+        } catch (migErr: any) {
+          // Non-fatal: log and continue (idempotent migrations may harmlessly fail)
+          console.warn(`  ⚠️  ${file} warning: ${migErr.message?.substring(0, 100)}`);
+        }
+      }
+    }
+
     // Ensure default roles always exist
     await client.query(`
       INSERT INTO roles (id, name, description, permissions) VALUES

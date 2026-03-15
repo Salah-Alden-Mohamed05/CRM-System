@@ -151,6 +151,9 @@ export const salesAPI = {
   convertLead: (id: string, data: unknown) => api.post(`/sales/leads/${id}/convert`, data),
   // Personal stats
   getMyStats: (params?: unknown) => api.get('/sales/my-stats', { params }),
+  // Sales activity report
+  getActivityReport: (params?: { period?: string; from?: string; to?: string; userId?: string }) =>
+    api.get('/sales/activity-report', { params }),
 };
 
 // ── Shipments ────────────────────────────────────────────────
@@ -247,11 +250,16 @@ export const rfqsAPI = {
 
 // ── Quotations ───────────────────────────────────────────────
 export const quotationsAPI = {
-  getAll:  (params?: unknown) => api.get('/quotations', { params }),
-  getOne:  (id: string) => api.get(`/quotations/${id}`),
-  create:  (data: unknown) => api.post('/quotations', data),
-  update:  (id: string, data: unknown) => api.put(`/quotations/${id}`, data),
-  delete:  (id: string) => api.delete(`/quotations/${id}`),
+  getAll:       (params?: unknown) => api.get('/quotations', { params }),
+  getOne:       (id: string) => api.get(`/quotations/${id}`),
+  create:       (data: unknown) => api.post('/quotations', data),
+  update:       (id: string, data: unknown) => api.put(`/quotations/${id}`, data),
+  delete:       (id: string) => api.delete(`/quotations/${id}`),
+  getPDF:       (id: string) => api.get(`/quotations/${id}/pdf`),
+  sendEmail:    (id: string, data: unknown) => api.post(`/quotations/${id}/send-email`, data),
+  duplicate:    (id: string) => api.post(`/quotations/${id}/duplicate`, {}),
+  getEmails:    (id: string) => api.get(`/quotations/${id}/emails`),
+  expireOld:    () => api.get('/quotations/expire'),
 };
 
 // ── Documents ────────────────────────────────────────────────
@@ -264,4 +272,36 @@ export const documentsAPI = {
   createUrl: (data: unknown) => api.post('/documents', data),
   delete:    (id: string) => api.delete(`/documents/${id}`),
   download:  (id: string) => api.get(`/documents/${id}/download`, { responseType: 'blob' }),
+};
+
+
+// ── Leads (Sales) ──────────────────────────────────────────────
+export const leadsAPI = {
+  getAll:  (params?: unknown) => api.get('/leads', { params }),
+  getOne:  (id: string) => api.get(`/leads/${id}`),
+  create:  (data: unknown) => api.post('/leads', data),
+  update:  (id: string, data: unknown) => api.put(`/leads/${id}`, data),
+  delete:  (id: string) => api.delete(`/leads/${id}`),
+  convert: (id: string, data: unknown) => api.post(`/leads/${id}/convert`, data),
+};
+
+// ── Lead Import & Distribution (Admin) ──────────────────────
+export const leadImportAPI = {
+  // Pool stats
+  getPoolStats: () => api.get('/admin/leads/pool'),
+
+  // Import
+  importLeads: (formData: FormData) => api.post('/admin/leads/import', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  }),
+  getBatches: () => api.get('/admin/leads/import/batches'),
+  downloadTemplate: () => api.get('/admin/leads/import/template', { responseType: 'blob' }),
+
+  // Distribution
+  distribute: (data: unknown) => api.post('/admin/leads/distribute', data),
+  getDistributionHistory: () => api.get('/admin/leads/distribution/history'),
+
+  // Assigned leads management
+  getAssignedLeads: () => api.get('/admin/leads/assigned'),
+  reassignLeads: (data: { leadIds: string[]; newAssigneeId?: string; unassign?: boolean }) => api.post('/admin/leads/reassign', data),
 };

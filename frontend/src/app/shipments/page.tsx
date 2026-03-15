@@ -7,21 +7,19 @@ import MainLayout from '@/components/layout/MainLayout';
 import { shipmentsAPI, customersAPI } from '@/lib/api';
 import { Shipment, Milestone, Customer } from '@/types';
 import { Card, Badge, Button, Input, Select, Modal, Loading, EmptyState } from '@/components/ui';
+import { useTranslation } from '@/lib/i18n';
 import {
   Package, Plus, AlertTriangle, CheckCircle2, Clock, Plane,
-  Ship, Truck, Train, ArrowRight, MapPin, Calendar, Search
+  Ship, Truck, Train, ArrowRight, MapPin, Calendar, Search, RefreshCw
 } from 'lucide-react';
 
-const STATUS_CONFIG: Record<string, { label: string; badge: 'default' | 'info' | 'warning' | 'success' | 'danger' | 'purple'; color: string }> = {
-  booking: { label: 'Booking', badge: 'default', color: 'bg-gray-500' },
-  pickup: { label: 'Pickup', badge: 'info', color: 'bg-blue-500' },
-  customs_export: { label: 'Export Customs', badge: 'warning', color: 'bg-yellow-500' },
-  departed: { label: 'Departed', badge: 'purple', color: 'bg-purple-500' },
-  in_transit: { label: 'In Transit', badge: 'info', color: 'bg-cyan-500' },
-  customs_import: { label: 'Import Customs', badge: 'warning', color: 'bg-orange-500' },
-  arrived: { label: 'Arrived', badge: 'success', color: 'bg-lime-500' },
-  delivered: { label: 'Delivered', badge: 'success', color: 'bg-green-500' },
-  cancelled: { label: 'Cancelled', badge: 'danger', color: 'bg-red-500' },
+const STATUS_BADGE: Record<string, 'default' | 'info' | 'warning' | 'success' | 'danger' | 'purple'> = {
+  booking: 'default', pickup: 'info', customs_export: 'warning', departed: 'purple',
+  in_transit: 'info', customs_import: 'warning', arrived: 'success', delivered: 'success', cancelled: 'danger',
+};
+const STATUS_COLOR: Record<string, string> = {
+  booking: 'bg-gray-500', pickup: 'bg-blue-500', customs_export: 'bg-yellow-500', departed: 'bg-purple-500',
+  in_transit: 'bg-cyan-500', customs_import: 'bg-orange-500', arrived: 'bg-lime-500', delivered: 'bg-green-500', cancelled: 'bg-red-500',
 };
 
 const ModeIcon = ({ mode }: { mode?: string }) => {
@@ -37,6 +35,7 @@ const ModeIcon = ({ mode }: { mode?: string }) => {
 
 export default function ShipmentsPage() {
   const { isAuthenticated } = useAuth();
+  const { t, isRTL } = useTranslation();
   const router = useRouter();
   const [shipments, setShipments] = useState<Shipment[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -96,22 +95,27 @@ export default function ShipmentsPage() {
 
   return (
     <MainLayout>
-      <div className="p-6 space-y-6">
+      <div className="p-4 md:p-6 space-y-4 sm:space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Shipments</h1>
-            <p className="text-gray-500 text-sm mt-1">{total} total shipments</p>
+            <h1 className="text-xl sm:text-2xl font-bold text-gray-900">{t('shipments.title')}</h1>
+            <p className="text-gray-500 text-sm mt-1">{total} {t('common.total')}</p>
           </div>
-          <Button onClick={() => setShowNewModal(true)} icon={<Plus className="w-4 h-4" />}>New Shipment</Button>
+          <div className="flex items-center gap-2">
+            <button onClick={fetchData} className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors" title={t('common.refresh')}>
+              <RefreshCw className="w-4 h-4" />
+            </button>
+            <Button onClick={() => setShowNewModal(true)} icon={<Plus className="w-4 h-4" />}>{t('shipments.newShipment')}</Button>
+          </div>
         </div>
 
         {/* Filters */}
         <Card>
           <div className="flex flex-wrap items-center gap-3">
-            <div className="flex-1 min-w-48">
+            <div className="flex-1 min-w-[180px]">
               <Input
-                placeholder="Search by reference or customer..."
+                placeholder={isRTL ? 'بحث بالمرجع أو العميل…' : 'Search by reference or customer...'}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 icon={<Search className="w-4 h-4" />}
@@ -121,12 +125,12 @@ export default function ShipmentsPage() {
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
               options={[
-                { value: '', label: 'All Statuses' },
-                ...Object.entries(STATUS_CONFIG).map(([k, v]) => ({ value: k, label: v.label })),
+                { value: '', label: isRTL ? 'جميع الحالات' : 'All Statuses' },
+                ...Object.keys(STATUS_BADGE).map(k => ({ value: k, label: k.replace(/_/g, ' ') })),
               ]}
-              className="w-44"
+              className="w-40"
             />
-            <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+            <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer select-none">
               <input
                 type="checkbox"
                 checked={delayedOnly}
@@ -134,7 +138,7 @@ export default function ShipmentsPage() {
                 className="rounded text-orange-500"
               />
               <AlertTriangle className="w-4 h-4 text-orange-500" />
-              Delayed only
+              {isRTL ? 'المتأخرة فقط' : 'Delayed only'}
             </label>
           </div>
         </Card>
@@ -143,14 +147,13 @@ export default function ShipmentsPage() {
         {loading ? <Loading /> : shipments.length === 0 ? (
           <EmptyState
             icon={<Package className="w-8 h-8" />}
-            title="No shipments found"
-            description="Create your first shipment to start tracking"
-            action={<Button onClick={() => setShowNewModal(true)} icon={<Plus className="w-4 h-4" />}>New Shipment</Button>}
+            title={t('common.noData')}
+            description={isRTL ? 'أنشئ شحنتك الأولى لبدء التتبع' : 'Create your first shipment to start tracking'}
+            action={<Button onClick={() => setShowNewModal(true)} icon={<Plus className="w-4 h-4" />}>{t('shipments.newShipment')}</Button>}
           />
         ) : (
           <div className="space-y-3">
             {shipments.map((shipment) => {
-              const config = STATUS_CONFIG[shipment.status] || STATUS_CONFIG.booking;
               return (
                 <Card
                   key={shipment.id}
@@ -161,10 +164,10 @@ export default function ShipmentsPage() {
                   }}
                 >
                   <div className="p-4">
-                    <div className="flex items-center justify-between flex-wrap gap-3">
+                    <div className="flex items-start sm:items-center justify-between flex-wrap gap-3">
                       {/* Left */}
-                      <div className="flex items-center gap-4">
-                        <div className={`w-10 h-10 ${config.color} rounded-xl flex items-center justify-center text-white`}>
+                      <div className="flex items-center gap-3">
+                        <div className={`w-9 h-9 sm:w-10 sm:h-10 ${STATUS_COLOR[shipment.status] || 'bg-gray-500'} rounded-xl flex items-center justify-center text-white flex-shrink-0`}>
                           <ModeIcon mode={shipment.shipping_mode} />
                         </div>
                         <div>
@@ -172,7 +175,7 @@ export default function ShipmentsPage() {
                             <span className="font-bold text-gray-900 text-sm">{shipment.reference_number}</span>
                             {shipment.is_delayed && (
                               <span className="flex items-center gap-1 text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-medium">
-                                <AlertTriangle className="w-3 h-3" /> Delayed
+                                <AlertTriangle className="w-3 h-3" /> {t('shipments.statuses.delayed')}
                               </span>
                             )}
                           </div>
@@ -214,7 +217,7 @@ export default function ShipmentsPage() {
                       {/* Status + Actions */}
                       <div className="flex items-center gap-3">
                         {shipment.carrier && <span className="text-xs text-gray-400 bg-gray-50 px-2 py-1 rounded">{shipment.carrier}</span>}
-                        <Badge variant={config.badge}>{config.label}</Badge>
+                        <Badge variant={STATUS_BADGE[shipment.status] || 'default'}>{shipment.status.replace(/_/g, ' ')}</Badge>
                         {(shipment.open_ticket_count || 0) > 0 && (
                           <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-medium">
                             {shipment.open_ticket_count} ticket{(shipment.open_ticket_count || 0) > 1 ? 's' : ''}
@@ -234,29 +237,29 @@ export default function ShipmentsPage() {
           <Modal
             isOpen={!!selectedShipment}
             onClose={() => setSelectedShipment(null)}
-            title={`Shipment: ${selectedShipment.reference_number}`}
+            title={`${t('shipments.title')}: ${selectedShipment.reference_number}`}
             size="xl"
           >
             <div className="space-y-6">
               {/* Summary */}
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="p-3 bg-gray-50 rounded-lg">
-                  <p className="text-xs text-gray-500">Customer</p>
+                  <p className="text-xs text-gray-500">{t('shipments.customer')}</p>
                   <p className="font-semibold text-sm">{selectedShipment.customer_name}</p>
                 </div>
                 <div className="p-3 bg-gray-50 rounded-lg">
-                  <p className="text-xs text-gray-500">Mode</p>
+                  <p className="text-xs text-gray-500">{t('shipments.shippingMode')}</p>
                   <p className="font-semibold text-sm capitalize">{selectedShipment.shipping_mode}</p>
                 </div>
                 <div className="p-3 bg-gray-50 rounded-lg">
-                  <p className="text-xs text-gray-500">Carrier</p>
+                  <p className="text-xs text-gray-500">{t('shipments.carrier')}</p>
                   <p className="font-semibold text-sm">{selectedShipment.carrier || 'TBD'}</p>
                 </div>
               </div>
 
               {/* Milestones */}
               <div>
-                <h4 className="font-semibold text-gray-900 mb-4">Tracking Milestones</h4>
+                <h4 className="font-semibold text-gray-900 mb-4">{t('shipments.milestones')}</h4>
                 <div className="relative">
                   <div className="absolute left-4 top-0 bottom-0 w-0.5 bg-gray-200" />
                   <div className="space-y-3">
@@ -288,10 +291,10 @@ export default function ShipmentsPage() {
                               </p>
                               {m.status === 'pending' && (
                                 <button
-                                  onClick={() => updateMilestone(selectedShipment.id, m.id, 'completed')}
-                                  className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+                                  onClick={(e) => { e.stopPropagation(); updateMilestone(selectedShipment.id, m.id, 'completed'); }}
+                                  className="text-xs text-blue-600 hover:text-blue-700 font-medium px-2 py-1 rounded hover:bg-blue-50 transition-colors"
                                 >
-                                  Mark Done
+                                  {isRTL ? 'تم' : 'Mark Done'}
                                 </button>
                               )}
                             </div>

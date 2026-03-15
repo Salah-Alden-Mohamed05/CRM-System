@@ -10,7 +10,7 @@ import {
   Plus, Search, RefreshCw, Star, Phone, Mail, Globe,
   CheckCircle, XCircle, X, AlertTriangle, ArrowRight,
   UserPlus, Calendar, MessageSquare, Target, ChevronRight,
-  Edit2, Trash2, TrendingUp, Briefcase
+  Edit2, Trash2, TrendingUp, Briefcase, RotateCcw
 } from 'lucide-react';
 import Link from 'next/link';
 import { format, formatDistanceToNow } from 'date-fns';
@@ -33,7 +33,7 @@ interface Lead {
   updated_at: string;
 }
 
-interface Toast { id: string; msg: string; type: 'success' | 'error'; }
+interface Toast { id: string; msg: string; type: 'success' | 'error' | 'undo'; onUndo?: () => void; }
 
 // ─── Status Config ─────────────────────────────────────────────────────────────
 const STATUS_CONFIG = {
@@ -53,9 +53,21 @@ function Toasts({ list, remove }: { list: Toast[]; remove: (id: string) => void 
   return (
     <div className="fixed bottom-4 right-4 z-50 space-y-2">
       {list.map(t => (
-        <div key={t.id} className={`flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg text-sm font-medium max-w-sm ${t.type === 'success' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}>
-          {t.type === 'success' ? <CheckCircle className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
+        <div key={t.id} className={`flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg text-sm font-medium max-w-sm ${
+          t.type === 'error' ? 'bg-red-600 text-white' :
+          t.type === 'undo' ? 'bg-gray-800 text-white' :
+          'bg-green-600 text-white'
+        }`}>
+          {t.type === 'error' ? <XCircle className="w-4 h-4 flex-shrink-0" /> : <CheckCircle className="w-4 h-4 flex-shrink-0" />}
           <span className="flex-1">{t.msg}</span>
+          {t.type === 'undo' && t.onUndo && (
+            <button
+              onClick={() => { t.onUndo?.(); remove(t.id); }}
+              className="flex items-center gap-1 text-xs font-bold text-orange-300 hover:text-orange-200 border-l border-white/20 pl-3 whitespace-nowrap"
+            >
+              <RotateCcw className="w-3.5 h-3.5" /> Undo
+            </button>
+          )}
           <button onClick={() => remove(t.id)}><X className="w-4 h-4 opacity-70 hover:opacity-100" /></button>
         </div>
       ))}
@@ -286,10 +298,10 @@ export default function MyLeadsPage() {
   const [convertingLead, setConvertingLead] = useState<Lead | null>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
 
-  const addToast = (msg: string, type: 'success' | 'error' = 'success') => {
+  const addToast = (msg: string, type: 'success' | 'error' | 'undo' = 'success', onUndo?: () => void) => {
     const id = Date.now().toString();
-    setToasts(prev => [...prev, { id, msg, type }]);
-    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000);
+    setToasts(prev => [...prev, { id, msg, type, onUndo }]);
+    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 5000);
   };
 
   const fetchData = useCallback(async () => {
@@ -329,10 +341,19 @@ export default function MyLeadsPage() {
   };
 
   const handleStatusChange = async (id: string, status: string) => {
+    const lead = leads.find(l => l.id === id);
+    const prevStatus = lead?.status;
     try {
       await salesAPI.updateLead(id, { status });
-      addToast(`Lead status changed to ${status}`);
       fetchData();
+      if (prevStatus) {
+        addToast(`Status → ${status}`, 'undo', async () => {
+          await salesAPI.updateLead(id, { status: prevStatus });
+          fetchData();
+        });
+      } else {
+        addToast(`Lead status changed to ${status}`);
+      }
     } catch {
       addToast('Failed to update status', 'error');
     }

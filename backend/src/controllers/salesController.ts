@@ -640,3 +640,110 @@ export const getSalesPersonalStats = async (req: AuthRequest, res: Response): Pr
     res.status(500).json({ success: false, message: 'Failed to fetch personal stats' });
   }
 };
+
+// ─── SALES ACTIVITY REPORT ────────────────────────────────────────────────────
+export const getSalesActivityReport = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const isAdmin = req.user?.role === 'Admin';
+    const isSalesManager = ['Admin', 'Sales'].includes(req.user?.role || '');
+
+    const {
+      period = 'monthly',   // weekly | monthly | custom
+      from,
+      to,
+      userId,
+    } = req.query;
+
+    // Build date range
+    let startDate: string;
+    let endDate: string = new Date().toISOString().split('T')[0];
+
+    if (period === 'weekly') {
+      const d = new Date();
+      d.setDate(d.getDate() - 7);
+      startDate = d.toISOString().split('T')[0];
+    } else if (period === 'monthly') {
+      const d = new Date();
+      d.setMonth(d.getMonth() - 1);
+      startDate = d.toISOString().split('T')[0];
+    } else if (period === 'custom' && from && to) {
+      startDate = from as string;
+      endDate = to as string;
+    } else {
+      // default: last 30 days
+      const d = new Date();
+      d.setDate(d.getDate() - 30);
+      startDate = d.toISOString().split('T')[0];
+    }
+
+    const userFilter = !isAdmin ? `AND u.id = '${req.user!.id}'` : (userId ? `AND u.id = '${userId}'` : '');
+
+    // Per-employee report
+    const perUserResult = await query(`
+      SELECT
+        u.id as user_id,
+        u.first_name || ' ' || u.last_name as user_name,
+        u.email as user_email,
+        r.name as user_role,
+        -- Leads created in period
+        (SELECT COUNT(*) FROM leads l WHERE l.created_by = u.id AND l.created_at BETWEEN $1 AND $2::date + interval '1 day') as leads_created,
+        -- Leads contacted in period
+        (SELECT COUNT(*) FROM leads l WHERE l.assigned_to = u.id AND l.status = 'contacted' AND l.updated_at BETWEEN $1 AND $2::date + interval '1 day') as leads_contacted,
+        -- Deals created in period
+        (SELECT COUNT(*) FROM deals d WHERE d.assigned_to = u.id AND d.created_at BETWEEN $1 AND $2::date + interval '1 day') as deals_created,
+        -- RFQs submitted in period
+        (SELECT COUNT(*) FROM rfqs r2 WHERE r2.submitted_by = u.id AND r2.created_at BETWEEN $1 AND $2::date + interval '1 day') as rfqs_submitted,
+        -- Quotations created in period
+        (SELECT COUNT(*) FROM quotations q WHERE q.created_by = u.id AND q.created_at BETWEEN $1 AND $2::date + interval '1 day') as quotations_created,
+        -- Quotations sent in period
+        (SELECT COUNT(*) FROM quotation_emails qe WHERE qe.sent_by = u.id AND qe.sent_at BETWEEN $1 AND $2::date + interval '1 day') as quotations_sent,
+        -- Deals won in period
+        (SELECT COUNT(*) FROM deals d WHERE d.assigned_to = u.id AND d.stage = 'won' AND d.updated_at BETWEEN $1 AND $2::date + interval '1 day') as deals_won,
+        -- Deals lost in period
+        (SELECT COUNT(*) FROM deals d WHERE d.assigned_to = u.id AND d.stage = 'lost' AND d.updated_at BETWEEN $1 AND $2::date + interval '1 day') as deals_lost,
+        -- Activities in period
+        (SELECT COUNT(*) FROM deal_activities da WHERE da.user_id = u.id AND da.created_at BETWEEN $1 AND $2::date + interval '1 day') as activities_total,
+        -- Calls in period
+        (SELECT COUNT(*) FROM deal_activities da WHERE da.user_id = u.id AND da.activity_type = 'call' AND da.created_at BETWEEN $1 AND $2::date + interval '1 day') as calls_made,
+        -- Emails in period
+        (SELECT COUNT(*) FROM deal_activities da WHERE da.user_id = u.id AND da.activity_type IN ('email','quotation_sent','email_sent') AND da.created_at BETWEEN $1 AND $2::date + interval '1 day') as emails_sent,
+        -- Pipeline value (active deals)
+        (SELECT COALESCE(SUM(d.value), 0) FROM deals d WHERE d.assigned_to = u.id AND d.stage NOT IN ('won','lost')) as pipeline_value,
+        -- Won value in period
+        (SELECT COALESCE(SUM(d.value), 0) FROM deals d WHERE d.assigned_to = u.id AND d.stage = 'won' AND d.updated_at BETWEEN $1 AND $2::date + interval '1 day') as won_value
+      FROM users u
+      LEFT JOIN roles r ON u.role_id = r.id
+      WHERE u.is_active = TRUE
+        AND r.name IN ('Sales', 'Admin', 'Operations')
+        ${userFilter}
+      ORDER BY deals_won DESC, leads_created DESC
+    `, [startDate, endDate]);
+
+    // Totals row
+    const totals = perUserResult.rows.reduce((acc: Record<string, number>, row) => {
+      const numFields = ['leads_created','leads_contacted','deals_created','rfqs_submitted',
+        'quotations_created','quotations_sent','deals_won','deals_lost',
+        'activities_total','calls_made','emails_sent','pipeline_value','won_value'];
+      numFields.forEach(f => {
+        acc[f] = (acc[f] || 0) + (parseFloat(row[f]) || 0);
+      });
+      return acc;
+    }, {});
+
+    res.json({
+      success: true,
+      data: {
+        period,
+        startDate,
+        endDate,
+        perUser: perUserResult.rows,
+        totals,
+        generatedAt: new Date().toISOString(),
+        generatedBy: `${req.user!.firstName} ${req.user!.lastName}`
+      }
+    });
+  } catch (error) {
+    console.error('getSalesActivityReport error:', error);
+    res.status(500).json({ success: false, message: 'Failed to generate sales activity report' });
+  }
+};
