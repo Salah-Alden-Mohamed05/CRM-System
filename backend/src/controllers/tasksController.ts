@@ -137,6 +137,7 @@ export const getTaskStats = async (req: AuthRequest, res: Response): Promise<voi
         COUNT(*) FILTER (WHERE t.status = 'in_progress') AS in_progress,
         COUNT(*) FILTER (WHERE t.status = 'completed')   AS completed,
         COUNT(*) FILTER (WHERE t.status = 'cancelled')   AS cancelled,
+        COUNT(*) FILTER (WHERE t.status = 'blocked')     AS blocked,
         COUNT(*) FILTER (WHERE t.due_date < NOW() AND t.status NOT IN ('completed','cancelled')) AS overdue,
         COUNT(*) AS total
       FROM tasks t ${userFilter}
@@ -168,7 +169,8 @@ export const createTask = async (req: AuthRequest, res: Response): Promise<void>
   try {
     const {
       title, taskType, description, requiredActions, outcome, notes, status = 'pending',
-      priority = 'medium', dueDate, dealId, customerId, shipmentId, assignedTo, checklist = []
+      priority = 'medium', dueDate, dealId, customerId, shipmentId, assignedTo, checklist = [],
+      blockedReason, blocked_reason
     } = req.body;
 
     if (!title || !taskType) {
@@ -176,17 +178,20 @@ export const createTask = async (req: AuthRequest, res: Response): Promise<void>
       return;
     }
 
+    const finalBlockedReason = blockedReason || blocked_reason || null;
+
     const result = await query(
       `INSERT INTO tasks
          (user_id, assigned_to, title, task_type, description, required_actions, outcome, notes,
-          status, priority, due_date, deal_id, customer_id, shipment_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+          status, priority, due_date, deal_id, customer_id, shipment_id, blocked_reason)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
        RETURNING *`,
       [
         req.user!.id, assignedTo || null, title, taskType, description || null,
         requiredActions || null, outcome || null, notes || null,
         status, priority, dueDate || null,
         dealId || null, customerId || null, shipmentId || null,
+        finalBlockedReason,
       ]
     );
 
@@ -232,8 +237,11 @@ export const updateTask = async (req: AuthRequest, res: Response): Promise<void>
 
     const {
       title, taskType, description, requiredActions, outcome, notes, status, priority,
-      dueDate, dealId, customerId, shipmentId, assignedTo, checklist
+      dueDate, dealId, customerId, shipmentId, assignedTo, checklist,
+      blockedReason, blocked_reason
     } = req.body;
+
+    const finalBlockedReason = blockedReason !== undefined ? blockedReason : blocked_reason;
 
     const result = await query(
       `UPDATE tasks SET
@@ -250,12 +258,13 @@ export const updateTask = async (req: AuthRequest, res: Response): Promise<void>
          customer_id = COALESCE($11, customer_id),
          shipment_id = COALESCE($12, shipment_id),
          assigned_to = COALESCE($13, assigned_to),
+         blocked_reason = CASE WHEN $15::text IS NOT NULL THEN $15 ELSE blocked_reason END,
          completed_at = CASE WHEN $7 = 'completed' THEN NOW() ELSE completed_at END,
          updated_at = NOW()
        WHERE id = $14
        RETURNING *`,
       [title, taskType, description, requiredActions, outcome, notes, status, priority,
-       dueDate, dealId, customerId, shipmentId, assignedTo, id]
+       dueDate, dealId, customerId, shipmentId, assignedTo, id, finalBlockedReason || null]
     );
 
     // Update checklist if provided

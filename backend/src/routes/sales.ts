@@ -3,7 +3,7 @@ import {
   getOpportunities, getOpportunity, createOpportunity, updateOpportunity,
   updateStage, addActivity,
   getLeads, getLead, createLead, updateLead, deleteLead, convertLead,
-  getSalesPersonalStats
+  getSalesPersonalStats, getSalesActivityReport
 } from '../controllers/salesController';
 import { authenticate, authorize } from '../middleware/auth';
 
@@ -29,5 +29,8 @@ router.post('/leads/:id/convert', authorize('Admin', 'Sales'), convertLead);
 
 // ─── Personal stats (sales rep dashboard) ────────────────────────────────────
 router.get('/my-stats', getSalesPersonalStats);
+
+// ─── Sales Activity Report ────────────────────────────────────────────────────
+router.get('/activity-report', getSalesActivityReport);
 
 export default router;

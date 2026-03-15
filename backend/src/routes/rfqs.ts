@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getRFQs, getRFQ, createRFQ, updateRFQ } from '../controllers/rfqController';
+import { getRFQs, getRFQ, createRFQ, updateRFQ, deleteRFQ } from '../controllers/rfqController';
 import { authenticate, authorize } from '../middleware/auth';
 
 const router = Router();
@@ -9,5 +9,6 @@ router.get('/', getRFQs);
 router.post('/', authorize('Admin', 'Sales'), createRFQ);
 router.get('/:id', getRFQ);
 router.put('/:id', authorize('Admin', 'Sales', 'Operations', 'Finance'), updateRFQ);
+router.delete('/:id', authorize('Admin'), deleteRFQ);
 
 export default router;

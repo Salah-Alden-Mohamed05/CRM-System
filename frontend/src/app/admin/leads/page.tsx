@@ -5,10 +5,12 @@ import { useRouter } from 'next/navigation';
 import MainLayout from '@/components/layout/MainLayout';
 import { useAuth } from '@/context/AuthContext';
 import { salesAPI, authAPI } from '@/lib/api';
+import Link from 'next/link';
 import {
   Users, Plus, Search, Filter, RefreshCw, Eye, Edit2, Trash2,
   UserCheck, UserX, TrendingUp, Phone, Mail, Building2,
-  ChevronDown, X, Check, AlertCircle, ArrowRight, UserPlus
+  ChevronDown, X, Check, AlertCircle, ArrowRight, UserPlus,
+  Upload, Shuffle
 } from 'lucide-react';
 
 interface Lead {
@@ -154,10 +156,24 @@ export default function AdminLeadsPage() {
             </h1>
             <p className="text-gray-500 mt-1">Manage and distribute leads to your sales team</p>
           </div>
-          <div className="flex gap-3">
+          <div className="flex gap-2 flex-wrap">
+            <Link
+              href="/admin/leads/import"
+              className="flex items-center gap-2 px-3 py-2 border border-green-300 text-green-700 bg-green-50 rounded-lg hover:bg-green-100 text-sm font-medium"
+            >
+              <Upload className="w-4 h-4" />
+              Import
+            </Link>
+            <Link
+              href="/admin/leads/distribution"
+              className="flex items-center gap-2 px-3 py-2 border border-purple-300 text-purple-700 bg-purple-50 rounded-lg hover:bg-purple-100 text-sm font-medium"
+            >
+              <Shuffle className="w-4 h-4" />
+              Distribute
+            </Link>
             <button
               onClick={fetchLeads}
-              className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 text-sm font-medium"
+              className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 text-sm font-medium"
             >
               <RefreshCw className="w-4 h-4" />
               Refresh
